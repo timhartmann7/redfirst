@@ -63,8 +63,17 @@ func (r *Repo) Diff(ctx context.Context, base, head string) (domain.Diff, error)
 
 // diffArgs keeps the rename and copy flags identical between the two
 // invocations, so the two outputs line up file for file.
+//
+// --attr-source pins .gitattributes to the merge base (git 2.42 and newer).
+// Without it git reads attributes from the working tree, which is head: one
+// line of `*.py -diff` on the agent's branch makes numstat print "-" for every
+// count, and diff-budget then measures a diff the agent zeroed itself.
+// Invariant 5 puts rule lists on base, and .gitattributes is one of them.
 func diffArgs(format, from, to string) []string {
-	return []string{"diff", format, "-z", "--find-renames", "--find-copies", from, to}
+	return []string{
+		"--attr-source=" + from,
+		"diff", format, "-z", "--find-renames", "--find-copies", from, to,
+	}
 }
 
 // indexByPath addresses the changes by their head path, which is unique inside
