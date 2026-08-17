@@ -115,3 +115,52 @@ func TestTestImmutability_ModeWithoutCaseNamesIsOurBugNotAPass(t *testing.T) {
 		})
 	}
 }
+
+// TestTestImmutability_ARemovalAnswersToEveryListThatClaimedTheFile closes an
+// acquittal the overlap opened. tests.fixtures speaks first for a path both
+// lists match, which is right for an edit and wrong for a removal: a real test
+// file living under a fixtures path would otherwise leave the repository behind
+// the softer of the two rules that covered it, and invariant 2 puts that
+// failure above every convenience.
+func TestTestImmutability_ARemovalAnswersToEveryListThatClaimedTheFile(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Defaults()
+	// A real test file, and both built-in lists claim it: tests/** and
+	// **/*.test.* on one side, **/fixtures/** on the other.
+	path := "tests/fixtures/checkout.test.js"
+	if !cfg.Tests.Patterns.Match(path) || !cfg.Tests.Fixtures.Match(path) {
+		t.Fatalf("%s no longer sits in both lists: the overlap this test pins is gone", path)
+	}
+
+	cases := []struct {
+		name string
+		file domain.FileChange
+	}{
+		{"Deleted", removed(path, 12)},
+		{"RenamedOutOfBothLists", renamed(path, "src/checkout.js", 0)},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			res := runGate(t, tests.NewTestImmutability(cfg), cfg, tc.file)
+
+			assertRefusal(t, res, domain.RemediationRevertPaths)
+			if want := "append-only · 1 removed"; res.Message != want {
+				t.Errorf("message = %q, want %q: the list that forbids the removal speaks", res.Message, want)
+			}
+		})
+	}
+
+	// The edit rule is the other way round, and stays that way: a snapshot
+	// under both lists is still only flagged.
+	t.Run("AnEditStillAnswersToTheFixtureList", func(t *testing.T) {
+		t.Parallel()
+
+		res := runGate(t, tests.NewTestImmutability(cfg), cfg, modified(path, 3, "test('checks out', () => {})"))
+
+		assertStatus(t, res, domain.StatusWarn)
+	})
+}
