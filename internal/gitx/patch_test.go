@@ -1,12 +1,14 @@
 package gitx_test
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/timhartmann7/redfirst/internal/domain"
+	"github.com/timhartmann7/redfirst/internal/gitx"
 	"github.com/timhartmann7/redfirst/internal/testkit"
 )
 
@@ -138,6 +140,70 @@ func TestGitx_FilesWithoutAddedLinesCarryNone(t *testing.T) {
 			t.Parallel()
 			if got := fileByPath(t, d, tc.path).AddedLines; got != nil {
 				t.Errorf("added lines of %s = %+v, want none", tc.path, got)
+			}
+		})
+	}
+}
+
+func TestGitx_HunkHeaderGrammar(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name                  string
+		header                string
+		start, added, deleted int
+	}{
+		{"BothSidesCounted", "@@ -12,3 +14,5 @@", 14, 5, 3},
+		// A count of one is written as no count at all.
+		{"CountsLeftOut", "@@ -12 +14 @@", 14, 1, 1},
+		{"OneSideLeftOut", "@@ -12,3 +14 @@", 14, 1, 3},
+		{"ANewFile", "@@ -0,0 +1,9 @@", 1, 9, 0},
+		{"APureDeletion", "@@ -5,2 +4,0 @@", 4, 0, 2},
+		// Git appends the enclosing function, and it may hold anything.
+		{"TrailingContext", "@@ -1,4 +1,9 @@ func main() { @@ -1 +1 @@", 1, 9, 4},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			start, added, deleted, err := gitx.ParseHunkHeader(tc.header)
+			if err != nil {
+				t.Fatalf("parse %q: %v", tc.header, err)
+			}
+			if start != tc.start || added != tc.added || deleted != tc.deleted {
+				t.Errorf("parse %q = start %d, +%d, -%d, want start %d, +%d, -%d",
+					tc.header, start, added, deleted, tc.start, tc.added, tc.deleted)
+			}
+		})
+	}
+}
+
+// TestGitx_MalformedHunkHeaderIsOurBugNotASilentSkip keeps the parser loud. A
+// header it cannot read means git prints something this code does not know
+// about, and reading on would number added lines against a range nobody parsed.
+func TestGitx_MalformedHunkHeaderIsOurBugNotASilentSkip(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		header string
+	}{
+		{"TooShort", "@@ -1,4 @@"},
+		{"NoClosingMarker", "@@ -1,4 +1,9 ##"},
+		{"WrongSignOnTheOldSide", "@@ +1,4 +1,9 @@"},
+		{"AStartThatIsNotANumber", "@@ -x,4 +1,9 @@"},
+		{"ACountThatIsNotANumber", "@@ -1,4 +1,z @@"},
+		{"AnEmptyRange", "@@ - +1,9 @@"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, _, _, err := gitx.ParseHunkHeader(tc.header)
+			if !errors.Is(err, domain.ErrInternal) {
+				t.Errorf("parse %q = %v, want an internal error", tc.header, err)
 			}
 		})
 	}
