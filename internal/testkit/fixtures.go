@@ -47,9 +47,7 @@ func CleanFix(t *testing.T) *Repo {
 	t.Helper()
 
 	r := NewRepo(t)
-	r.Write("README.md", "# shop\n")
-	r.Write("src/total.js", cleanFixSource)
-	r.Write("src/total.test.js", cleanFixTest)
+	writeCleanFixBase(r)
 	r.Commit("feat: add the order total")
 
 	r.Branch(FixtureHead)
@@ -58,4 +56,38 @@ func CleanFix(t *testing.T) *Repo {
 	r.Commit("fix: apply the item discount to the total")
 
 	return r
+}
+
+const hookedFixConfig = `version = 1
+
+[tests]
+immutability = "cases"
+`
+
+// HookedFix is clean-fix with the tier 2 files added to base: a .redfirst/
+// directory and a config asking for immutability = "cases". Both come from
+// base, so the head commit cannot reach them.
+func HookedFix(t *testing.T) *Repo {
+	t.Helper()
+
+	r := NewRepo(t)
+	writeCleanFixBase(r)
+	r.Write("redfirst.toml", hookedFixConfig)
+	r.Write(".redfirst/env-up.sh", "#!/bin/sh\n")
+	r.Write(".redfirst/test.sh", "#!/bin/sh\n")
+	r.Write(".redfirst/env-down.sh", "#!/bin/sh\n")
+	r.Commit("feat: add the order total and the redfirst hooks")
+
+	r.Branch(FixtureHead)
+	r.Write("src/total.js", cleanFixFixedSource)
+	r.Write("src/total.test.js", cleanFixTest+cleanFixAddedCase)
+	r.Commit("fix: apply the item discount to the total")
+
+	return r
+}
+
+func writeCleanFixBase(r *Repo) {
+	r.Write("README.md", "# shop\n")
+	r.Write("src/total.js", cleanFixSource)
+	r.Write("src/total.test.js", cleanFixTest)
 }
