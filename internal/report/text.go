@@ -80,7 +80,11 @@ func writeGates(b *strings.Builder, gates []domain.GateResult) {
 			separated = true
 		}
 		line(b, fmt.Sprintf("%-*s%-*s%s", statusWidth, label(g.Status), idWidth, g.ID, gateMessage(g)))
-		if g.Status == domain.StatusFail {
+		// A warning earns its evidence as much as a refusal does. Invariant 9
+		// asks the report to say what exactly was flagged and where, and a
+		// warning is the one status where the reader decides for themselves:
+		// hiding the files leaves them nothing to decide with.
+		if g.Status == domain.StatusFail || g.Status == domain.StatusWarn {
 			writeEvidence(b, g)
 		}
 	}
