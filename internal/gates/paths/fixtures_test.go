@@ -2,12 +2,16 @@ package paths_test
 
 import (
 	"context"
+	"fmt"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/timhartmann7/redfirst/internal/config"
 	"github.com/timhartmann7/redfirst/internal/domain"
 	"github.com/timhartmann7/redfirst/internal/gates/paths"
 	"github.com/timhartmann7/redfirst/internal/gitx"
+	"github.com/timhartmann7/redfirst/internal/runner"
 	"github.com/timhartmann7/redfirst/internal/testkit"
 )
 
@@ -86,6 +90,141 @@ func touchedClaudeMD(t *testing.T) *testkit.Repo {
 	r.Commit("docs: clarify the testing rules")
 
 	return r
+}
+
+// oversizedFiles is what the branch touches by hand: four files past the
+// default limit of twenty, so the refusal cannot come from anything else.
+const oversizedFiles = 24
+
+// bulk repeats a line n times.
+func bulk(line string, n int) string {
+	return strings.Repeat(line+"\n", n)
+}
+
+// bulkLines makes one file longer than the whole added-line budget, so the
+// generated file and the test file each break that limit on their own.
+// Counting either would add an overrun beside the file count, and the fixture
+// test allows exactly one.
+func bulkLines() int { return config.Defaults().Budget.MaxAddedLines + 100 }
+
+// oversizedDiff is the fixture of the same name: a branch well past the file
+// budget, carrying a regenerated file and a new test file besides. Base marks
+// the generated tree in .gitattributes, and invariant 5 keeps that mark out of
+// the agent's reach.
+func oversizedDiff(t *testing.T) *testkit.Repo {
+	t.Helper()
+
+	r := testkit.NewRepo(t)
+	r.Write(".gitattributes", "generated/** linguist-generated\n")
+	r.Write("generated/schema.js", bulk("export const field = 0", 10))
+	for i := range oversizedFiles {
+		r.Write(fmt.Sprintf("src/mod%02d.js", i), fmt.Sprintf("export const mod = %d\n", i))
+	}
+	r.Commit("feat: seed the module tree")
+
+	r.Branch(testkit.FixtureHead)
+	for i := range oversizedFiles {
+		r.Write(fmt.Sprintf("src/mod%02d.js", i), fmt.Sprintf("export const mod = %d\nexport const patched = true\n", i))
+	}
+	r.Write("generated/schema.js", bulk("export const field = 1", bulkLines()))
+	r.Write("src/mod00.test.js", bulk("test('mod', () => {})", bulkLines()))
+	r.Commit("feat: patch every module")
+
+	return r
+}
+
+// TestDiffBudget_OversizedDiffFixtureCountsNeitherGeneratedNorTestFiles drives
+// the gate from a real repository: the generated mark comes from
+// .gitattributes at the merge base rather than from a field a test filled in.
+// Each excluded file is longer than the whole added-line budget, so counting
+// either shows up twice over: as a file the count should not hold and as an
+// overrun on a limit the assertion below allows nobody to break.
+func TestDiffBudget_OversizedDiffFixtureCountsNeitherGeneratedNorTestFiles(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Defaults()
+	diff := fixtureDiff(t, oversizedDiff(t))
+	assertGenerated(t, diff, "generated/schema.js")
+
+	res := runGateOnDiff(t, paths.NewDiffBudget(cfg), cfg, diff)
+
+	if res.Status != domain.StatusFail {
+		t.Fatalf("status = %q, want a refusal on %d files: %s", res.Status, oversizedFiles, res.Message)
+	}
+	wantMessage := fmt.Sprintf("%d/%d files", oversizedFiles, cfg.Budget.MaxFiles)
+	if !strings.HasPrefix(res.Message, wantMessage) {
+		t.Errorf("message = %q, want it to open with %q", res.Message, wantMessage)
+	}
+	want := []string{fmt.Sprintf("%d files, the budget allows %d", oversizedFiles, cfg.Budget.MaxFiles)}
+	assertOverrun(t, res, want)
+}
+
+// assertGenerated keeps the fixture honest: without the mark from base the
+// case would be testing an ordinary file with a long diff.
+func assertGenerated(t *testing.T, d domain.Diff, path string) {
+	t.Helper()
+
+	for _, f := range d.Files {
+		if f.Path == path {
+			if !f.Generated {
+				t.Fatalf("%s is not marked linguist-generated", path)
+			}
+			return
+		}
+	}
+	t.Fatalf("the fixture diff holds no %s", path)
+}
+
+// guardedOnly is the fixture of the same name: the branch touches nothing but
+// guarded paths. A human who bumped the dependencies gets a line and a merge,
+// not a red cross.
+func guardedOnly(t *testing.T) *testkit.Repo {
+	t.Helper()
+
+	r := testkit.NewRepo(t)
+	r.Write("src/total.js", fixtureSource)
+	r.Write("pnpm-lock.yaml", "lockfileVersion: 9\n")
+	r.Write(".github/dependabot.yml", "version: 2\n")
+	r.Commit("chore: pin the dependencies")
+
+	r.Branch(testkit.FixtureHead)
+	r.Write("pnpm-lock.yaml", "lockfileVersion: 9\nupdated: true\n")
+	r.Write(".github/dependabot.yml", "version: 2\nschedule: weekly\n")
+	r.Commit("chore: bump the dependencies")
+
+	return r
+}
+
+// TestPathGates_GuardedOnlyFixtureWarnsAndStillExitsZero carries the fixture's
+// whole claim: the run reports both guarded files and the verdict stays at
+// zero. It reads the exit code through the runner rather than the gate result,
+// because "verdict 0" is a property of the run and not of one line in it.
+func TestPathGates_GuardedOnlyFixtureWarnsAndStillExitsZero(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Defaults()
+	diff := fixtureDiff(t, guardedOnly(t))
+
+	protected := runGateOnDiff(t, paths.NewProtectedPaths(cfg), cfg, diff)
+	budget := runGateOnDiff(t, paths.NewDiffBudget(cfg), cfg, diff)
+
+	results := []domain.GateResult{protected, budget}
+	if code := domain.ExitCode(runner.Outcome(results)); code != 0 {
+		t.Errorf("exit code = %d, want 0: a guarded path is a line for a reviewer, not a refusal", code)
+	}
+
+	got := make([]string, 0, len(protected.Warnings))
+	for _, w := range protected.Warnings {
+		if w.Kind != domain.WarnGuardedPaths {
+			t.Errorf("warning kind = %q, want %q", w.Kind, domain.WarnGuardedPaths)
+		}
+		got = append(got, w.File)
+	}
+	slices.Sort(got)
+	want := []string{".github/dependabot.yml", "pnpm-lock.yaml"}
+	if !slices.Equal(got, want) {
+		t.Errorf("guarded files = %v, want %v", got, want)
+	}
 }
 
 // TestProtectedPaths_TouchedWorkflowFixtureCatchesTheRenameOnItsSource drives
