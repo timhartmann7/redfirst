@@ -103,14 +103,16 @@ func TestRunner_RunOverAnEmptyDiffAccusesNobody(t *testing.T) {
 		case domain.StatusPass:
 			// An implemented gate that found nothing in an empty diff.
 		case domain.StatusSkip:
-			if r.Reason != "gate not implemented yet" {
-				t.Errorf("gate %q: reason %q", r.ID, r.Reason)
+			// A stub, or a gate a config key switched off. Either way the
+			// line has to say which, and the reason is the only place it can.
+			if r.Reason == "" {
+				t.Errorf("gate %q skipped without a reason", r.ID)
 			}
 		default:
-			t.Errorf("gate %q: status %q, want pass or a stub's skip", r.ID, r.Status)
+			t.Errorf("gate %q: status %q, want pass or a skip", r.ID, r.Status)
 		}
 	}
 	if code := domain.ExitCode(runner.Outcome(results)); code != 0 {
-		t.Errorf("exit code %d, want 0: a skeleton run accuses nobody", code)
+		t.Errorf("exit code %d, want 0: a run over an empty diff accuses nobody", code)
 	}
 }
