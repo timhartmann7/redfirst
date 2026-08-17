@@ -15,19 +15,26 @@ type Repo struct {
 	dir string
 }
 
-// Open verifies that dir is inside a git work tree.
-func Open(dir string) (*Repo, error) {
+// Open resolves dir to the top level of its work tree.
+//
+// Anchoring at the top level is not tidiness. `git diff` names files relative
+// to the repository root, while `ls-tree` and `show` resolve their paths
+// against the current directory. Left at a subdirectory the two disagree: the
+// diff covers the whole repository while redfirst.toml and .redfirst/ are
+// looked up under the subdirectory prefix and never found, and the run judges
+// a full diff by built-in defaults while reporting config=defaults as the
+// truth. Invariant 5 says the rules come from base, so they have to be found.
+func Open(ctx context.Context, dir string) (*Repo, error) {
 	r := &Repo{dir: dir}
 
-	// One bounded call before the caller holds any context of its own: this is
-	// the point where a wrong directory has to be caught.
-	inside, err := r.runLine(context.Background(), "rev-parse", "--is-inside-work-tree")
+	top, err := r.runLine(ctx, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return nil, err
 	}
-	if inside != "true" {
+	if top == "" {
 		return nil, fmt.Errorf("%w: %s is not inside a git work tree", domain.ErrHarness, dir)
 	}
+	r.dir = top
 	return r, nil
 }
 

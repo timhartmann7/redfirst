@@ -89,7 +89,7 @@ func parseVerifyFlags(args []string, stderr io.Writer) (verifyFlags, error) {
 
 // judge runs every gate and assembles the report around the results.
 func judge(ctx context.Context, f verifyFlags) ([]domain.GateResult, domain.Report, error) {
-	repo, err := gitx.Open(f.repo)
+	repo, err := gitx.Open(ctx, f.repo)
 	if err != nil {
 		return nil, domain.Report{}, err
 	}

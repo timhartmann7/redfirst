@@ -16,7 +16,7 @@ import (
 func openFixture(t *testing.T, r *testkit.Repo) *gitx.Repo {
 	t.Helper()
 
-	repo, err := gitx.Open(r.Dir)
+	repo, err := gitx.Open(t.Context(), r.Dir)
 	if err != nil {
 		t.Fatalf("open %s: %v", r.Dir, err)
 	}
@@ -74,7 +74,7 @@ func twoBranches(t *testing.T) *testkit.Repo {
 func TestGitx_OpenRejectsNonRepository(t *testing.T) {
 	t.Parallel()
 
-	if _, err := gitx.Open(t.TempDir()); !errors.Is(err, domain.ErrHarness) {
+	if _, err := gitx.Open(t.Context(), t.TempDir()); !errors.Is(err, domain.ErrHarness) {
 		t.Fatalf("open of a plain directory: %v, want a harness error", err)
 	}
 }
