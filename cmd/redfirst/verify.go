@@ -147,8 +147,18 @@ func assemble(
 		Diff:            diff.Totals(),
 		Tests:           diff.StatsMatching(cfg.IsTestSurface),
 		Gates:           results,
-		Warnings:        warnings,
+		Warnings:        append(warnings, gateWarnings(results)...),
 	}
+}
+
+// gateWarnings lifts the verdict-free lines out of the results, in gate order,
+// so two runs on the same input order the report block the same way.
+func gateWarnings(results []domain.GateResult) []domain.Warning {
+	var ws []domain.Warning
+	for _, r := range results {
+		ws = append(ws, r.Warnings...)
+	}
+	return ws
 }
 
 func parseGateIDs(list string) ([]domain.GateID, error) {

@@ -7,10 +7,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/timhartmann7/redfirst/internal/domain"
+	"github.com/timhartmann7/redfirst/internal/runner"
 	"github.com/timhartmann7/redfirst/internal/testkit"
 )
 
@@ -26,9 +28,10 @@ func verifyArgs(repoDir string, extra ...string) []string {
 	return append(args, extra...)
 }
 
-// TestVerify_CleanFixWithoutHooksLeavesEveryGateUnrun is the skeleton's own
-// acceptance criterion: nine gate lines, each unavailable or skipped, exit 0.
-func TestVerify_CleanFixWithoutHooksLeavesEveryGateUnrun(t *testing.T) {
+// TestVerify_CleanFixWithoutHooksAccusesNobody holds the shape of a tier 1
+// run: nine gate lines, none of them a refusal, the hook gates unavailable
+// with a reason, exit 0.
+func TestVerify_CleanFixWithoutHooksAccusesNobody(t *testing.T) {
 	t.Parallel()
 
 	repo := testkit.CleanFix(t)
@@ -46,8 +49,8 @@ func TestVerify_CleanFixWithoutHooksLeavesEveryGateUnrun(t *testing.T) {
 		t.Fatalf("report carries %d gates, want %d", got, want)
 	}
 	for _, g := range rep.Gates {
-		if g.Status != domain.StatusSkip && g.Status != domain.StatusUnavailable {
-			t.Errorf("%s: status %q, want skip or unavailable while the gates are stubs", g.ID, g.Status)
+		if g.Status == domain.StatusFail || g.Status == domain.StatusWarn {
+			t.Errorf("%s: status %q on an honest fix: %s", g.ID, g.Status, g.Message)
 		}
 		if g.Status == domain.StatusUnavailable && g.Reason == "" {
 			t.Errorf("%s: unavailable without a reason", g.ID)
@@ -120,6 +123,32 @@ func runJSON(t *testing.T, repoDir string) string {
 		t.Fatalf("re-encode report: %v", err)
 	}
 	return string(stable)
+}
+
+// TestAssemble_GateWarningsReachTheReportInGateOrder covers the channel a gate
+// uses for lines that leave the verdict alone: a guarded path or a suppression
+// hit belongs to the gate that found it, and the report gathers them.
+func TestAssemble_GateWarningsReachTheReportInGateOrder(t *testing.T) {
+	t.Parallel()
+
+	guarded := domain.Warning{Kind: domain.WarnGuardedPaths, File: "pnpm-lock.yaml"}
+	suppression := domain.Warning{Kind: domain.WarnSuppression, File: "src/total.ts", Line: 42}
+	downgrade := domain.Warning{Kind: domain.WarnConfig, Detail: "cases needs hooks"}
+	results := []domain.GateResult{
+		{ID: domain.GateProtectedPaths, Status: domain.StatusPass, Warnings: []domain.Warning{guarded}},
+		{ID: domain.GateDiffBudget, Status: domain.StatusPass},
+		{ID: domain.GateSuppressionScan, Status: domain.StatusPass, Warnings: []domain.Warning{suppression}},
+	}
+
+	rep := assemble(
+		domain.Diff{}, domain.Config{}, "defaults",
+		runner.NewCapSet(domain.CapDiff), results, []domain.Warning{downgrade},
+	)
+
+	want := []domain.Warning{downgrade, guarded, suppression}
+	if !slices.Equal(rep.Warnings, want) {
+		t.Errorf("warnings = %v, want %v", rep.Warnings, want)
+	}
 }
 
 func TestVerify_WritesTheReportToTheOutFile(t *testing.T) {

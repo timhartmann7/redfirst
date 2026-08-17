@@ -19,3 +19,9 @@ jobs:
       # make check ends with `go mod tidy` plus a diff on go.mod and go.sum:
       # a slice that grew a dependency fails here.
       - run: make check
+      # The hot path carries benchmarks, so CI runs them. The deterministic
+      # half of the budget is already a test inside make check: allocations
+      # that do not grow with the diff. A numeric threshold on wall clock
+      # needs a stored baseline and waits for the release slice, because a
+      # shared runner's timings would otherwise fail a green branch.
+      - run: make bench
