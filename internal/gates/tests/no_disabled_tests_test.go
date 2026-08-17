@@ -144,7 +144,7 @@ func TestNoDisabledTests_ReportsEveryOffendingLine(t *testing.T) {
 	}
 	want := []string{"src/total.test.js", "tests/order.test.js"}
 	if got := evidenceFiles(res); !slices.Equal(got, want) {
-		t.Errorf("evidence = %v, want %v in diff order", got, want)
+		t.Fatalf("evidence = %v, want %v in diff order", got, want)
 	}
 	if got := res.Evidence[0].Line; got != 2 {
 		t.Errorf("line = %d, want 2: the number points at the offending line, not at the file", got)
@@ -162,6 +162,9 @@ func TestNoDisabledTests_ClipsALineTooLongToRead(t *testing.T) {
 	res := runGate(t, tests.NewNoDisabledTests(cfg), cfg, added("src/total.test.js", long))
 
 	assertRefusal(t, res, domain.RemediationRevertPaths)
+	if len(res.Evidence) != 1 {
+		t.Fatalf("evidence = %+v, want one entry", res.Evidence)
+	}
 	detail := res.Evidence[0].Detail
 	if len([]rune(detail)) > 81 {
 		t.Errorf("detail runs to %d runes: %q", len([]rune(detail)), detail)

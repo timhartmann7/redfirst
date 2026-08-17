@@ -74,8 +74,8 @@ func TestSuppressionScan_WarningCarriesFileLineAndPattern(t *testing.T) {
 		Pattern: `catch\s*\(\s*\w*\s*\)\s*\{\s*\}`,
 		Detail:  "} catch (e) {}",
 	}
-	if res.Warnings[0] != want {
-		t.Errorf("warning = %+v, want %+v", res.Warnings[0], want)
+	if got := res.Warnings[0]; got != want {
+		t.Errorf("warning = %+v, want %+v", got, want)
 	}
 	if want := "1 added line to review"; res.Message != want {
 		t.Errorf("message = %q, want %q", res.Message, want)
