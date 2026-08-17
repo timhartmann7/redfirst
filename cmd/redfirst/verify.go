@@ -110,11 +110,14 @@ func judge(ctx context.Context, f verifyFlags) ([]domain.GateResult, domain.Repo
 	caps := runner.Capabilities(env, diff, runner.HarnessProbe{}, cfg)
 
 	var warnings []domain.Warning
-	if !caps.Has(domain.CapHooks) && config.DowngradeCasesWithoutHooks(&cfg) {
-		warnings = append(warnings, domain.Warning{
-			Kind:   domain.WarnConfig,
-			Detail: `tests.immutability "cases" needs hooks, downgraded to "append-only"`,
-		})
+	if !caps.Has(domain.CapHooks) {
+		for _, key := range config.DowngradeCasesWithoutHooks(&cfg) {
+			warnings = append(warnings, domain.Warning{
+				Kind: domain.WarnConfig,
+				Detail: fmt.Sprintf("%s %q needs hooks, downgraded to %q",
+					key, domain.ImmutabilityCases, domain.ImmutabilityAppendOnly),
+			})
+		}
 	}
 
 	only, err := parseGateIDs(f.gates)
