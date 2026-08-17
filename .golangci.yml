@@ -1,0 +1,29 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - errorlint
+    - funlen
+    - lll
+    - nestif
+  settings:
+    funlen:
+      lines: 50
+      statements: 40
+    lll:
+      line-length: 120
+    nestif:
+      # Three levels of nesting is the ceiling; nestif reports at four.
+      min-complexity: 4
+  exclusions:
+    rules:
+      # Table-driven tests carry their cases inline; the 50-line ceiling is a
+      # rule about production code.
+      - path: _test\.go
+        linters:
+          - funlen
+
+formatters:
+  enable:
+    - gofumpt
