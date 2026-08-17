@@ -95,7 +95,7 @@ func TestNewTestPresent_RefusesADiffWithNoAddedTestLine(t *testing.T) {
 			res := runGate(t, tests.NewNewTestPresent(cfg), cfg, tc.files...)
 
 			assertRefusal(t, res, domain.RemediationAddTest)
-			if want := "the diff adds no line to a file under tests.patterns"; res.Message != want {
+			if want := "the diff adds no line to a test file"; res.Message != want {
 				t.Errorf("message = %q, want %q", res.Message, want)
 			}
 		})

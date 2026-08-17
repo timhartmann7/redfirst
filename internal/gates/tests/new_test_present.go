@@ -54,7 +54,7 @@ func (g *NewTestPresent) Run(_ context.Context, in domain.Input) (domain.GateRes
 	}
 	return domain.GateResult{
 		Status:      domain.StatusFail,
-		Message:     "the diff adds no line to a file under tests.patterns",
+		Message:     "the diff adds no line to a test file",
 		Remediation: domain.RemediationAddTest,
 	}, nil
 }
