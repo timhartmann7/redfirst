@@ -40,6 +40,12 @@ test('adds prices', () => {
 })
 `
 
+const fixtureAddedCase = `
+test('applies a discount', () => {
+  expect(total([{ price: 10, discount: 0.5 }])).toBe(5)
+})
+`
+
 // fixtureRepo is the base every fixture of this slice forks from: one source
 // file and one test file that covers it.
 func fixtureRepo(t *testing.T) *testkit.Repo {
@@ -83,6 +89,30 @@ func skippedTest(t *testing.T) domain.Diff {
 	r.Write("src/total.test.js", fixtureTest+fixtureSkippedCase)
 	r.Write("src/total.js", fixtureFixedSource)
 	r.Commit("fix: apply the item discount to the total")
+
+	return fixtureDiff(t, r)
+}
+
+const fixtureCaughtSource = `export function total(items) {
+  let sum = 0
+  try {
+    for (const item of items) {
+      sum += item.price * (1 - (item.discount ?? 0))
+    }
+  } catch (e) {}
+  return sum
+}
+`
+
+// emptyCatch is the fixture of the same name: the exception that broke the
+// suite is now caught and dropped on the floor.
+func emptyCatch(t *testing.T) domain.Diff {
+	t.Helper()
+
+	r := fixtureRepo(t)
+	r.Write("src/total.js", fixtureCaughtSource)
+	r.Write("src/total.test.js", fixtureTest+fixtureAddedCase)
+	r.Commit("fix: stop the total from throwing on a missing price")
 
 	return fixtureDiff(t, r)
 }
