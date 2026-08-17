@@ -74,6 +74,32 @@ func fixtureDiff(t *testing.T, r *testkit.Repo) domain.Diff {
 	return d
 }
 
+// deletedTest is the fixture of the same name: the agent dropped the test that
+// stood in the way and fixed nothing.
+func deletedTest(t *testing.T) domain.Diff {
+	t.Helper()
+
+	r := fixtureRepo(t)
+	r.Remove("src/total.test.js")
+	r.Write("src/total.js", fixtureFixedSource)
+	r.Commit("fix: apply the item discount to the total")
+
+	return fixtureDiff(t, r)
+}
+
+// editedTestAppend is the fixture of the same name: the honest shape of an edit
+// to an existing test file, a case appended and nothing removed.
+func editedTestAppend(t *testing.T) domain.Diff {
+	t.Helper()
+
+	r := fixtureRepo(t)
+	r.Write("src/total.test.js", fixtureTest+fixtureAddedCase)
+	r.Write("src/total.js", fixtureFixedSource)
+	r.Commit("fix: apply the item discount to the total")
+
+	return fixtureDiff(t, r)
+}
+
 const fixtureSkippedCase = `
 test.skip('applies a discount', () => {
   expect(total([{ price: 10, discount: 0.5 }])).toBe(5)
@@ -113,6 +139,32 @@ func emptyCatch(t *testing.T) domain.Diff {
 	r.Write("src/total.js", fixtureCaughtSource)
 	r.Write("src/total.test.js", fixtureTest+fixtureAddedCase)
 	r.Commit("fix: stop the total from throwing on a missing price")
+
+	return fixtureDiff(t, r)
+}
+
+const (
+	fixtureSnapshotPath = "src/__snapshots__/total.test.js.snap"
+	fixtureSnapshot     = "exports[`total adds prices 1`] = `15`;\n"
+	fixtureBentSnapshot = "exports[`total adds prices 1`] = `0`;\n"
+)
+
+// updatedSnapshot is the fixture of the same name: the output disagreed with
+// the snapshot, so the snapshot changed its mind. No test file was touched, no
+// protected path, and there is no .skip to find.
+func updatedSnapshot(t *testing.T) domain.Diff {
+	t.Helper()
+
+	r := testkit.NewRepo(t)
+	r.Write("src/total.js", fixtureSource)
+	r.Write("src/total.test.js", fixtureTest)
+	r.Write(fixtureSnapshotPath, fixtureSnapshot)
+	r.Commit("feat: add the order total")
+
+	r.Branch(testkit.FixtureHead)
+	r.Write("src/total.js", fixtureFixedSource)
+	r.Write(fixtureSnapshotPath, fixtureBentSnapshot)
+	r.Commit("fix: apply the item discount to the total")
 
 	return fixtureDiff(t, r)
 }

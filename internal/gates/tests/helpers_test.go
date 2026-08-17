@@ -115,6 +115,10 @@ func renamed(from, to string, deleted int, lines ...string) domain.FileChange {
 	return f
 }
 
+func copied(from, to string) domain.FileChange {
+	return domain.FileChange{Path: to, OldPath: from, Status: domain.FileCopied}
+}
+
 // binary carries no line counts: git prints "-" on both sides and gitx turns
 // that into the flag.
 func binary(path string, status domain.FileStatus) domain.FileChange {
@@ -168,4 +172,28 @@ func evidenceFiles(res domain.GateResult) []string {
 		files = append(files, e.File)
 	}
 	return files
+}
+
+// existing is the path a change had at the merge base, which is the path the
+// evidence names.
+func existing(f domain.FileChange) string {
+	if f.OldPath != "" {
+		return f.OldPath
+	}
+	return f.Path
+}
+
+func assertEvidence(t *testing.T, res domain.GateResult, file, detail string) {
+	t.Helper()
+
+	for _, e := range res.Evidence {
+		if e.File != file {
+			continue
+		}
+		if e.Detail != detail {
+			t.Errorf("detail for %s = %q, want %q", file, e.Detail, detail)
+		}
+		return
+	}
+	t.Errorf("evidence %+v names no %s", res.Evidence, file)
 }
