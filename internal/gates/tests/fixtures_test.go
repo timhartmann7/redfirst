@@ -100,6 +100,17 @@ func editedTestAppend(t *testing.T) domain.Diff {
 	return fixtureDiff(t, r)
 }
 
+// noNewTest is the fixture of the same name: a fix with no test behind it.
+func noNewTest(t *testing.T) domain.Diff {
+	t.Helper()
+
+	r := fixtureRepo(t)
+	r.Write("src/total.js", fixtureFixedSource)
+	r.Commit("fix: apply the item discount to the total")
+
+	return fixtureDiff(t, r)
+}
+
 const fixtureSkippedCase = `
 test.skip('applies a discount', () => {
   expect(total([{ price: 10, discount: 0.5 }])).toBe(5)

@@ -6,8 +6,17 @@ import (
 	"github.com/timhartmann7/redfirst/internal/domain"
 )
 
-// NewTestPresent demands a new test file or added lines in an existing one. S2
-// implements it.
+// NewTestPresent demands that the diff add at least one line to a file under
+// tests.patterns.
+//
+// The unit is the line rather than the file, by design. A Go regression test
+// goes into the existing total_test.go and a pytest one into the existing
+// test_order.py, so demanding a new file would mean one test file per fix and
+// would break the convention of three languages out of the five presets.
+//
+// Off in the defaults. On tier 1 the gate faces human PRs, where a refactor or
+// a config edit is a legitimate diff with no new test, and a gate that fires on
+// an ordinary diff gets the tool deleted rather than the diff fixed.
 type NewTestPresent struct{}
 
 // NewNewTestPresent builds the gate. The config arrives at construction rather
@@ -22,11 +31,28 @@ func (g *NewTestPresent) Requires() []domain.Capability {
 	return []domain.Capability{domain.CapDiff}
 }
 
-// Run reports the stub state. S2 replaces this file whole.
-func (g *NewTestPresent) Run(context.Context, domain.Input) (domain.GateResult, error) {
+// Run looks for the fact of an addition and nothing more. red-green does the
+// substantive check, by case rather than by file.
+//
+// An added file with no added line is an empty file, and an empty file tests
+// nothing: the gate asks for a line either way, in a new test file or in one
+// that has been there all along.
+func (g *NewTestPresent) Run(_ context.Context, in domain.Input) (domain.GateResult, error) {
+	if !in.Config.Tests.RequireNew {
+		return domain.GateResult{
+			Status: domain.StatusSkip,
+			Reason: "tests.require_new is false",
+		}, nil
+	}
+
+	for _, f := range in.Diff.Files {
+		if f.Added > 0 && in.Config.Tests.Patterns.Match(f.Path) {
+			return domain.GateResult{Status: domain.StatusPass, Message: f.Path}, nil
+		}
+	}
 	return domain.GateResult{
-		ID:     domain.GateNewTestPresent,
-		Status: domain.StatusSkip,
-		Reason: "gate not implemented yet",
+		Status:      domain.StatusFail,
+		Message:     "the diff adds no line to a file under tests.patterns",
+		Remediation: domain.RemediationAddTest,
 	}, nil
 }

@@ -119,6 +119,35 @@ func TestTestImmutability_UpdatedSnapshotFixtureWarnsInDefaultsAndFailsUnderStri
 	}
 }
 
+// TestNewTestPresent_NoNewTestFixtureIsRefusedOnlyWhenRequireNewIsOn carries
+// both halves of the gate's contract: it judges an agent branch and stays out
+// of a human's way until someone switches it on.
+func TestNewTestPresent_NoNewTestFixtureIsRefusedOnlyWhenRequireNewIsOn(t *testing.T) {
+	t.Parallel()
+
+	diff := noNewTest(t)
+	fileOf(t, diff, "src/total.js", domain.FileModified)
+
+	t.Run("Defaults", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := config.Defaults()
+		if cfg.Tests.RequireNew {
+			t.Fatal("the built-in tests.require_new is on, want it off for human PRs")
+		}
+		assertStatus(t, runGateOnDiff(t, tests.NewNewTestPresent(cfg), cfg, diff), domain.StatusSkip)
+	})
+
+	t.Run("AgentBranch", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := config.Defaults()
+		cfg.Tests.RequireNew = true
+
+		assertRefusal(t, runGateOnDiff(t, tests.NewNewTestPresent(cfg), cfg, diff), domain.RemediationAddTest)
+	})
+}
+
 // TestNoDisabledTests_SkippedTestFixtureNamesTheLineGitGaveIt drives the gate
 // from a real append. The number in the report comes from the head file, so a
 // reviewer opening src/total.test.js at that line lands on the .skip.
@@ -171,5 +200,34 @@ func TestSuppressionScan_EmptyCatchFixtureWarnsAndStillExitsZero(t *testing.T) {
 	}
 	if got.Detail != "} catch (e) {}" {
 		t.Errorf("detail = %q, want the line the diff added", got.Detail)
+	}
+}
+
+// TestTestGates_CleanFixFixturePassesEveryStaticTestGate is the other end of
+// the slice: the honest diff has to come out clean, or the tool gets deleted
+// rather than the diff fixed.
+func TestTestGates_CleanFixFixturePassesEveryStaticTestGate(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Defaults()
+	cfg.Tests.RequireNew = true
+	diff := editedTestAppend(t)
+
+	gates := []gate{
+		tests.NewTestImmutability(cfg),
+		tests.NewNewTestPresent(cfg),
+		tests.NewNoDisabledTests(cfg),
+		tests.NewSuppressionScan(cfg),
+	}
+	results := make([]domain.GateResult, 0, len(gates))
+	for _, g := range gates {
+		res := runGateOnDiff(t, g, cfg, diff)
+		if res.Status != domain.StatusPass {
+			t.Errorf("%s = %q (%s), want pass", g.ID(), res.Status, res.Message)
+		}
+		results = append(results, res)
+	}
+	if code := domain.ExitCode(runner.Outcome(results)); code != 0 {
+		t.Errorf("exit code = %d, want 0", code)
 	}
 }
