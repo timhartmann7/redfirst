@@ -81,17 +81,6 @@ func (r *Repo) WriteBinary(path string, content []byte) {
 	}
 }
 
-// WriteExecutable creates or replaces an executable file, for hook scripts.
-func (r *Repo) WriteExecutable(path, content string) {
-	r.t.Helper()
-
-	r.Write(path, content)
-	full := filepath.Join(r.Dir, filepath.FromSlash(path))
-	if err := os.Chmod(full, 0o755); err != nil {
-		r.t.Fatalf("chmod %s: %v", path, err)
-	}
-}
-
 // Remove deletes a tracked file.
 func (r *Repo) Remove(path string) {
 	r.t.Helper()
