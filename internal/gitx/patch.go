@@ -59,6 +59,8 @@ type patch struct {
 	// path out of the header, which means reimplementing git's own C-style
 	// quoting for the sake of a name we already hold.
 	current int
+	// header is the last `diff --git` line. See parse.
+	header string
 }
 
 func (p *patch) parse(s *bufio.Scanner) error {
@@ -66,6 +68,16 @@ func (p *patch) parse(s *bufio.Scanner) error {
 		line := s.Text()
 		switch {
 		case strings.HasPrefix(line, fileHeader):
+			// A type change prints twice under a single --name-status record:
+			// git writes the old symlink out as a deletion and the new regular
+			// file as an addition, both under the same header. Two files never
+			// share a header, since no two entries of one diff name the same
+			// pair of paths, so an identical header continues the file rather
+			// than starting the next one.
+			if line == p.header {
+				break
+			}
+			p.header = line
 			p.current++
 			if p.current >= len(p.files) {
 				return fmt.Errorf("%w: git diff prints more files than --name-status did", domain.ErrInternal)

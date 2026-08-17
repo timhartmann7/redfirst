@@ -3,6 +3,8 @@ package gitx_test
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -207,4 +209,106 @@ func TestGitx_MalformedHunkHeaderIsOurBugNotASilentSkip(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestGitx_TypeChangePairsWithItsOneNameStatusRecord is the regression test for
+// the way a type change reaches the patch. Git writes the old symlink out as a
+// deletion and the new regular file as an addition, under two identical
+// `diff --git` headers, while --name-status reports the pair as a single T.
+// A parser that counted headers would run one file ahead of itself from there
+// on and hand every later gate another file's lines.
+func TestGitx_TypeChangePairsWithItsOneNameStatusRecord(t *testing.T) {
+	t.Parallel()
+
+	r := testkit.NewRepo(t)
+	r.Write("notes.txt", "a note\n")
+	symlink(t, r, "notes.txt", "link.txt")
+	r.Write("src/total.js", moduleSource)
+	r.Commit("feat: seed the tree")
+
+	r.Branch(testkit.FixtureHead)
+	if err := os.Remove(filepath.Join(r.Dir, "link.txt")); err != nil {
+		t.Fatalf("remove the symlink: %v", err)
+	}
+	r.Write("link.txt", "now a real file\n")
+	r.Write("src/total.js", moduleEdited)
+	r.Commit("chore: replace the link with a file")
+
+	d := diffFixture(t, r)
+	want := domain.FileChange{
+		Path: "link.txt", Status: domain.FileTypeChange, Added: 1, Deleted: 1,
+		AddedLines: []domain.AddedLine{{Number: 1, Text: "now a real file"}},
+	}
+	if got := fileByPath(t, d, "link.txt"); !reflect.DeepEqual(got, want) {
+		t.Errorf("change = %+v, want %+v", got, want)
+	}
+	// The file behind it is where a slipped pairing would show.
+	after := fileByPath(t, d, "src/total.js")
+	if len(after.AddedLines) != 1 || after.AddedLines[0].Text != "export const rate = 9" {
+		t.Errorf("added lines of src/total.js = %+v, want the line it changed", after.AddedLines)
+	}
+}
+
+// TestGitx_ChangesWithoutSourceLinesPairUp covers the other two shapes that
+// print unlike an ordinary edit: a mode change writes a header and no hunk at
+// all, and a submodule writes a pointer line that is neither source nor text.
+func TestGitx_ChangesWithoutSourceLinesPairUp(t *testing.T) {
+	t.Parallel()
+
+	r := testkit.NewRepo(t)
+	r.Write("script.sh", "echo one\n")
+	stageGitlink(t, r, "vendor/dep", "0000000000000000000000000000000000000001", "feat: seed the tree")
+
+	r.Branch(testkit.FixtureHead)
+	if err := os.Chmod(filepath.Join(r.Dir, "script.sh"), 0o755); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	stageGitlink(t, r, "vendor/dep", "0000000000000000000000000000000000000002", "chore: move the tree on")
+
+	d := diffFixture(t, r)
+	tests := []struct {
+		name string
+		want domain.FileChange
+	}{
+		{
+			name: "a mode change carries no line at all",
+			want: domain.FileChange{Path: "script.sh", Status: domain.FileModified},
+		},
+		{
+			name: "a submodule pointer counts as one line either way",
+			want: domain.FileChange{
+				Path: "vendor/dep", Status: domain.FileModified, Added: 1, Deleted: 1,
+				AddedLines: []domain.AddedLine{
+					{Number: 1, Text: "Subproject commit 0000000000000000000000000000000000000002"},
+				},
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := fileByPath(t, d, tc.want.Path); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("change = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+func symlink(t *testing.T, r *testkit.Repo, target, name string) {
+	t.Helper()
+
+	if err := os.Symlink(target, filepath.Join(r.Dir, name)); err != nil {
+		t.Fatalf("symlink %s -> %s: %v", name, target, err)
+	}
+}
+
+// stageGitlink commits the worktree together with a submodule pointer. A
+// gitlink needs no submodule on disk, and it has to go in after `git add -A`,
+// which would otherwise stage the absence of the directory as a deletion.
+func stageGitlink(t *testing.T, r *testkit.Repo, path, sha, message string) {
+	t.Helper()
+
+	r.Git("add", "-A")
+	r.Git("update-index", "--add", "--cacheinfo", "160000,"+sha+","+path)
+	r.Git("commit", "--quiet", "-m", message)
 }
