@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -44,6 +45,13 @@ func Load(ctx context.Context, src FileSource, ref, path string) (domain.Config,
 
 	md, err := toml.NewDecoder(r).Decode(&cfg)
 	if err != nil {
+		// git reports a missing or unfetchable blob only once the stream is
+		// running, so a read failure arrives here already carrying ErrHarness.
+		// Calling that an invalid config would tell the orchestrator a retry is
+		// pointless when the repository, not the file, is what broke.
+		if errors.Is(err, domain.ErrHarness) {
+			return domain.Config{}, "", fmt.Errorf("reading %s from %s: %w", path, ref, err)
+		}
 		return domain.Config{}, "", fmt.Errorf("%w: %s in %s: %w", domain.ErrConfig, path, ref, err)
 	}
 	if err := validate(cfg, md); err != nil {
