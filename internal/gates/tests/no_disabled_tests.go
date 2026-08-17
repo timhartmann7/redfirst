@@ -30,6 +30,11 @@ func (g *NoDisabledTests) Requires() []domain.Capability {
 // Run matches tests.forbid_disabled against the added lines of every test file.
 // The head path decides membership: a file renamed into the test tree carries
 // its new lines under the rules of where it landed.
+//
+// tests.patterns alone, without the carve-out new-test-present applies for the
+// test surface. The two gates fail in opposite directions: reading a snapshot
+// as a test would acquit a diff there, while skipping one here would let a
+// disabled case through on a path both lists claim.
 func (g *NoDisabledTests) Run(_ context.Context, in domain.Input) (domain.GateResult, error) {
 	hits := scanAdded(in.Diff, in.Config.Tests.Patterns.Match, in.Config.Tests.ForbidDisabled)
 	if len(hits) == 0 {
