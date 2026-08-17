@@ -197,6 +197,36 @@ func TestVerify_UnresolvableBaseIsHarnessFailureNotAgentFault(t *testing.T) {
 	}
 }
 
+// TestVerdictError_OnlyTheReportExplainsAVerdict keeps stderr for the failures
+// the report cannot explain. A gate refusal already ends in a VERDICT line, so
+// repeating "gate violation" on stderr is noise; a broken harness or a bad
+// config never reaches that line and has to say something.
+func TestVerdictError_OnlyTheReportExplainsAVerdict(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		err    error
+		silent bool
+	}{
+		{"gate violation", domain.ErrGateViolation, true},
+		{"no legal move", domain.ErrHumanRequired, true},
+		{"harness failure", domain.ErrHarness, false},
+		{"invalid config", domain.ErrConfig, false},
+		{"internal error", domain.ErrInternal, false},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := verdictError(c.err); got != c.silent {
+				t.Errorf("verdictError(%v) = %v, want %v", c.err, got, c.silent)
+			}
+		})
+	}
+}
+
 func TestRun_VersionPrintsTheVersion(t *testing.T) {
 	t.Parallel()
 
