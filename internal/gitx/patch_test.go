@@ -312,3 +312,50 @@ func stageGitlink(t *testing.T, r *testkit.Repo, path, sha, message string) {
 	r.Git("update-index", "--add", "--cacheinfo", "160000,"+sha+","+path)
 	r.Git("commit", "--quiet", "-m", message)
 }
+
+// hostileConfig is what a repository, a CI runner or a developer's ~/.gitconfig
+// may carry. Every entry changes the shape of patch output, and redfirst runs
+// git in someone else's repository: none of them may change what it reads.
+func hostileConfig() [][2]string {
+	return [][2]string{
+		{"diff.interHunkContext", "6"},
+		{"diff.submodule", "log"},
+		{"diff.context", "7"},
+		{"diff.noprefix", "true"},
+		{"diff.mnemonicPrefix", "true"},
+		{"diff.suppressBlankEmpty", "true"},
+		{"color.diff", "always"},
+	}
+}
+
+// TestGitx_AmbientDiffConfigCannotChangeWhatRedfirstReads runs the same diff
+// twice, once against a repository carrying every setting that decides how a
+// patch prints. Two of them used to be enough to end a run at exit code 4, and
+// one of those two could instead file a submodule's lines under another path
+// and pass every check on the way out.
+func TestGitx_AmbientDiffConfigCannotChangeWhatRedfirstReads(t *testing.T) {
+	t.Parallel()
+
+	r := testkit.NewRepo(t)
+	r.Write("src/list.js", numbered("keep", 1, 6))
+	stageGitlink(t, r, "vendor/dep", "0000000000000000000000000000000000000001", "feat: seed the tree")
+
+	r.Branch(testkit.FixtureHead)
+	// Two changes far enough apart to sit in separate hunks, which is what
+	// diff.interHunkContext fuses.
+	r.Write("src/list.js", "changed first\n"+numbered("keep", 2, 5)+"changed last\n")
+	stageGitlink(t, r, "vendor/dep", "0000000000000000000000000000000000000002", "feat: move the tree on")
+
+	want := diffFixture(t, r)
+	if len(want.Files) != 2 {
+		t.Fatalf("the fixture holds %+v, want the source file and the submodule", want.Files)
+	}
+
+	for _, kv := range hostileConfig() {
+		r.Git("config", kv[0], kv[1])
+	}
+
+	if got := diffFixture(t, r); !reflect.DeepEqual(got, want) {
+		t.Errorf("the diff changed with the git config\n got: %+v\nwant: %+v", got.Files, want.Files)
+	}
+}

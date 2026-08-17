@@ -37,14 +37,27 @@ func (r *Repo) readAddedLines(ctx context.Context, from, to string, files []doma
 // patchArgs asks for the same file set as diffArgs, with the content of every
 // hunk and no context around it.
 //
-// --no-ext-diff and --no-textconv keep a diff driver from replacing what we
-// read: a gate judges the line the agent wrote, not what a filter made of it.
-// --no-color does the same for `color.diff = always`, which would otherwise
-// wrap every line in escape sequences a regex has no idea about.
+// Every flag here pins a setting the ambient git config would otherwise decide,
+// because redfirst runs git in someone else's repository on someone else's CI
+// runner and the shape of this output is what the parser reads:
+//
+//   - --no-ext-diff and --no-textconv keep a diff driver from replacing the
+//     content: a gate judges the line the agent wrote, not what a filter made
+//     of it.
+//   - --no-color answers `color.diff = always`, which wraps every line in
+//     escape sequences a regex has no idea about.
+//   - --inter-hunk-context=0 answers `diff.interHunkContext`, which --unified=0
+//     does not override. It fuses neighbouring hunks and puts the lines between
+//     them inside one, which readHunk has no reading for.
+//   - --submodule=short answers `diff.submodule`. Under `log` a moved pointer
+//     prints no file header at all, and under `diff` it prints one per file
+//     changed inside the submodule: either way the patch stops lining up with
+//     --name-status, and one file's lines land under another file's name.
 func patchArgs(from, to string) []string {
 	return []string{
 		"--attr-source=" + from,
-		"diff", "--unified=0", "--no-color", "--no-ext-diff", "--no-textconv",
+		"diff", "--unified=0", "--inter-hunk-context=0", "--submodule=short",
+		"--no-color", "--no-ext-diff", "--no-textconv",
 		"--find-renames", "--find-copies", from, to,
 	}
 }
