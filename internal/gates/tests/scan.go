@@ -37,6 +37,18 @@ func scanAdded(d domain.Diff, include func(path string) bool, set domain.RegexSe
 	return hits
 }
 
+// holdsTestCases reports whether a path is a test file rather than part of the
+// surface around one.
+//
+// The two lists overlap by construction: a jest snapshot is named after the
+// file it belongs to, so `total.test.js.snap` falls under the default pattern
+// `**/*.test.*` as surely as the test does. tests.fixtures is defined as the
+// files that decide outcomes without holding test cases, so it settles the
+// overlap here exactly as it does in test-immutability.
+func holdsTestCases(cfg domain.Config, path string) bool {
+	return cfg.Tests.Patterns.Match(path) && !cfg.Tests.Fixtures.Match(path)
+}
+
 // excerpt is the line as the report prints it: trimmed of the indentation the
 // column layout supplies anyway, and cut where it stops being readable.
 func excerpt(s string) string {

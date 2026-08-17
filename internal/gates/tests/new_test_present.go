@@ -36,7 +36,9 @@ func (g *NewTestPresent) Requires() []domain.Capability {
 //
 // An added file with no added line is an empty file, and an empty file tests
 // nothing: the gate asks for a line either way, in a new test file or in one
-// that has been there all along.
+// that has been there all along. A line added to the test surface is not a
+// test: a snapshot holds no case, and accepting one would let a diff satisfy
+// the gate by writing down the output it already produces.
 func (g *NewTestPresent) Run(_ context.Context, in domain.Input) (domain.GateResult, error) {
 	if !in.Config.Tests.RequireNew {
 		return domain.GateResult{
@@ -46,7 +48,7 @@ func (g *NewTestPresent) Run(_ context.Context, in domain.Input) (domain.GateRes
 	}
 
 	for _, f := range in.Diff.Files {
-		if f.Added > 0 && in.Config.Tests.Patterns.Match(f.Path) {
+		if f.Added > 0 && holdsTestCases(in.Config, f.Path) {
 			return domain.GateResult{Status: domain.StatusPass, Message: f.Path}, nil
 		}
 	}

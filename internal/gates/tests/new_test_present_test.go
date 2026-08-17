@@ -4,6 +4,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/timhartmann7/redfirst/internal/config"
 	"github.com/timhartmann7/redfirst/internal/domain"
 	"github.com/timhartmann7/redfirst/internal/gates/tests"
 )
@@ -99,6 +100,30 @@ func TestNewTestPresent_RefusesADiffWithNoAddedTestLine(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestNewTestPresent_ASnapshotUnderTheDefaultsIsNotTheNewTest closes a channel
+// the built-in lists open on their own. A jest snapshot is named after its test
+// file, so `total.test.js.snap` matches the default pattern `**/*.test.*`:
+// reading it as a test would let a diff satisfy the gate by writing down the
+// output it already produces, which is the acquittal the gate exists to refuse.
+func TestNewTestPresent_ASnapshotUnderTheDefaultsIsNotTheNewTest(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Defaults()
+	cfg.Tests.RequireNew = true
+	snapshot := "src/__snapshots__/total.test.js.snap"
+
+	if !cfg.Tests.Patterns.Match(snapshot) {
+		t.Fatalf("%s no longer matches tests.patterns: the channel this test closes is gone", snapshot)
+	}
+
+	res := runGate(t, tests.NewNewTestPresent(cfg), cfg,
+		modified("src/total.js", 2, "return sum * rate"),
+		modified(snapshot, 1, "exports[`total adds prices 1`] = `0`;"),
+	)
+
+	assertRefusal(t, res, domain.RemediationAddTest)
 }
 
 // TestNewTestPresent_SkipsWhileRequireNewIsFalse holds the reason the gate ships
