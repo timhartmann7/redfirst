@@ -49,13 +49,14 @@ func TestGitx_ParsesRenameWithBothPaths(t *testing.T) {
 			want: domain.FileChange{
 				Path: "docs/manual.md", OldPath: "docs/guide.md",
 				Status: domain.FileRenamed, Added: 1, Deleted: 1,
+				AddedLines: []domain.AddedLine{{Number: 6, Text: "step five"}},
 			},
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if got := fileByPath(t, d, tc.want.Path); got != tc.want {
+			if got := fileByPath(t, d, tc.want.Path); !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("change = %+v, want %+v", got, tc.want)
 			}
 		})
@@ -78,7 +79,7 @@ func TestGitx_ParsesCopyWithSourcePath(t *testing.T) {
 
 	got := fileByPath(t, diffFixture(t, r), "src/subtotal.js")
 	want := domain.FileChange{Path: "src/subtotal.js", OldPath: "src/total.js", Status: domain.FileCopied}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("change = %+v, want %+v", got, want)
 	}
 }
@@ -113,7 +114,7 @@ func TestGitx_HandlesBinaryFile(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if got := fileByPath(t, d, tc.want.Path); got != tc.want {
+			if got := fileByPath(t, d, tc.want.Path); !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("change = %+v, want %+v", got, tc.want)
 			}
 		})
@@ -173,7 +174,7 @@ func TestGitx_ParsesDeletion(t *testing.T) {
 
 	got := fileByPath(t, diffFixture(t, r), "docs/guide.md")
 	want := domain.FileChange{Path: "docs/guide.md", Status: domain.FileDeleted, Deleted: 6}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("change = %+v, want %+v", got, want)
 	}
 }
@@ -198,17 +199,27 @@ func TestGitx_CountsAddedAndDeletedLines(t *testing.T) {
 	}{
 		{
 			name: "one edited line counts once on each side",
-			want: domain.FileChange{Path: "src/total.js", Status: domain.FileModified, Added: 1, Deleted: 1},
+			want: domain.FileChange{
+				Path: "src/total.js", Status: domain.FileModified, Added: 1, Deleted: 1,
+				AddedLines: []domain.AddedLine{{Number: 1, Text: "export const rate = 9"}},
+			},
 		},
 		{
 			name: "a new file counts every line as added",
-			want: domain.FileChange{Path: "docs/shipping.md", Status: domain.FileAdded, Added: 3},
+			want: domain.FileChange{
+				Path: "docs/shipping.md", Status: domain.FileAdded, Added: 3,
+				AddedLines: []domain.AddedLine{
+					{Number: 1, Text: "Shipping notes"},
+					{Number: 2, Text: ""},
+					{Number: 3, Text: "Carrier pickup happens twice a day."},
+				},
+			},
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if got := fileByPath(t, d, tc.want.Path); got != tc.want {
+			if got := fileByPath(t, d, tc.want.Path); !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("change = %+v, want %+v", got, tc.want)
 			}
 		})
@@ -236,7 +247,10 @@ func TestGitx_KeepsGitFileOrder(t *testing.T) {
 	// Git orders by destination path, and the order reaches the report as it
 	// came: sorting here would make two runs disagree with git itself.
 	want := []domain.FileChange{
-		{Path: "app/main.go", Status: domain.FileModified, Added: 1, Deleted: 1},
+		{
+			Path: "app/main.go", Status: domain.FileModified, Added: 1, Deleted: 1,
+			AddedLines: []domain.AddedLine{{Number: 4, Text: "\tprintln(2)"}},
+		},
 		{Path: "assets/logo.png", Status: domain.FileModified, Binary: true},
 		{Path: "docs/new.md", OldPath: "docs/old.md", Status: domain.FileRenamed},
 		{Path: "drop.txt", Status: domain.FileDeleted, Deleted: 3},
@@ -270,7 +284,10 @@ func TestGitx_DiffStartsFromMergeBase(t *testing.T) {
 			d.Base, d.Head, d.MergeBase, base, head, fork)
 	}
 	want := []domain.FileChange{
-		{Path: "src/total.js", Status: domain.FileModified, Added: 1, Deleted: 1},
+		{
+			Path: "src/total.js", Status: domain.FileModified, Added: 1, Deleted: 1,
+			AddedLines: []domain.AddedLine{{Number: 1, Text: "export const rate = 9"}},
+		},
 	}
 	if !reflect.DeepEqual(d.Files, want) {
 		t.Errorf("files = %+v, want only the branch change %+v", d.Files, want)

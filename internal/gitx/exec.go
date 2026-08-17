@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -17,6 +18,13 @@ import (
 // context died. Past it the copying goroutines are abandoned, so a grandchild
 // holding the pipe open cannot keep a verify run alive forever.
 const killGrace = 2 * time.Second
+
+const (
+	// recordLimit caps one NUL-terminated record. No path comes close.
+	recordLimit = 64 << 10
+	// patchLineLimit caps one line of patch output.
+	patchLineLimit = 8 << 20
+)
 
 // command builds a git invocation rooted at the repository. The child gets its
 // own process group and a Cancel that signals the group rather than the
@@ -50,6 +58,26 @@ func (r *Repo) runLine(ctx context.Context, args ...string) (string, error) {
 // record at a time. Diff output is never read whole: a thousand-file diff must
 // not land in memory as one string.
 func (r *Repo) runStream(ctx context.Context, parse func(*bufio.Scanner) error, args ...string) error {
+	return r.runScanner(ctx, scanNUL, recordLimit, parse, args...)
+}
+
+// runLines is runStream over line-terminated output. Patch output is the one
+// place where a record is a line rather than a NUL-terminated field.
+func (r *Repo) runLines(ctx context.Context, parse func(*bufio.Scanner) error, args ...string) error {
+	err := r.runScanner(ctx, bufio.ScanLines, patchLineLimit, parse, args...)
+	if errors.Is(err, bufio.ErrTooLong) {
+		// A source line never reaches the limit; a generated bundle written on
+		// one line does. Saying so beats scanning half a line for a suppressed
+		// symptom and reporting the half as the whole.
+		return fmt.Errorf("%w: a line of git diff output passes %d bytes: %w",
+			domain.ErrHarness, patchLineLimit, err)
+	}
+	return err
+}
+
+func (r *Repo) runScanner(
+	ctx context.Context, split bufio.SplitFunc, limit int, parse func(*bufio.Scanner) error, args ...string,
+) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -66,7 +94,8 @@ func (r *Repo) runStream(ctx context.Context, parse func(*bufio.Scanner) error, 
 	}
 
 	scanner := bufio.NewScanner(stdout)
-	scanner.Split(scanNUL)
+	scanner.Split(split)
+	scanner.Buffer(nil, limit)
 	perr := parse(scanner)
 	if perr == nil {
 		perr = scanner.Err()

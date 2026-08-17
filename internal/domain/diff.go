@@ -39,6 +39,12 @@ func (s FileStatus) HasOldPath() bool {
 	return s == FileRenamed || s == FileCopied
 }
 
+// AddedLine is one line the diff added, numbered on head.
+type AddedLine struct {
+	Number int
+	Text   string
+}
+
 // FileChange is one file in a diff.
 type FileChange struct {
 	// Path is the path on head. For a deletion it is the path that disappeared.
@@ -52,6 +58,11 @@ type FileChange struct {
 	Binary bool
 	// Generated marks linguist-generated in .gitattributes at the base ref.
 	Generated bool
+	// AddedLines is what the diff added, in file order, without the leading
+	// plus. Only added lines travel: a gate judges what the diff introduced,
+	// and the lines it left alone were never the agent's doing. Empty for a
+	// binary file, where git reports no lines at all.
+	AddedLines []AddedLine
 }
 
 // Diff is the change under judgement: merge-base to head.
