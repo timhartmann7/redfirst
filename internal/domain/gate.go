@@ -86,6 +86,12 @@ type GateResult struct {
 	Hint        string      `json:"hint,omitempty"`
 	Remediation Remediation `json:"remediation,omitempty"`
 	Evidence    []Evidence  `json:"evidence,omitempty"`
+	// Warnings are the lines the gate found that leave the verdict alone: a
+	// guarded path, a suppression hit. They travel on the result so a gate
+	// keeps its whole output in one value, and the report collects them into
+	// its own block. Not serialised here: the contract carries them once, at
+	// the top level.
+	Warnings []Warning `json:"-"`
 }
 
 // Input is everything a gate may read. It carries no capability set: the

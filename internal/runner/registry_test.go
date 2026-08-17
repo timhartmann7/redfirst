@@ -82,11 +82,11 @@ func TestRegistry_AllDeclaredGatesRegistered(t *testing.T) {
 	})
 }
 
-func TestRunner_SkeletonRunSkipsEveryStubAndRefusesNothing(t *testing.T) {
+func TestRunner_RunOverAnEmptyDiffAccusesNobody(t *testing.T) {
 	t.Parallel()
 
 	// Every capability is present, so nothing hides behind unavailable: what
-	// the run reports is what the stubs themselves return.
+	// the run reports is what the gates themselves return.
 	caps := runner.NewCapSet(
 		domain.CapDiff, domain.CapHooks, domain.CapTestFiles, domain.CapCaseNames, domain.CapStackTrace,
 	)
@@ -99,11 +99,15 @@ func TestRunner_SkeletonRunSkipsEveryStubAndRefusesNothing(t *testing.T) {
 		t.Fatalf("got %d report lines, want one per declared gate", len(results))
 	}
 	for _, r := range results {
-		if r.Status != domain.StatusSkip {
-			t.Errorf("gate %q: status %q, want %q", r.ID, r.Status, domain.StatusSkip)
-		}
-		if r.Reason != "gate not implemented yet" {
-			t.Errorf("gate %q: reason %q", r.ID, r.Reason)
+		switch r.Status {
+		case domain.StatusPass:
+			// An implemented gate that found nothing in an empty diff.
+		case domain.StatusSkip:
+			if r.Reason != "gate not implemented yet" {
+				t.Errorf("gate %q: reason %q", r.ID, r.Reason)
+			}
+		default:
+			t.Errorf("gate %q: status %q, want pass or a stub's skip", r.ID, r.Status)
 		}
 	}
 	if code := domain.ExitCode(runner.Outcome(results)); code != 0 {
