@@ -1,0 +1,15 @@
+redfirst v0.4.1 · verify · tier=1 · config=defaults
+base f3c9a11  head 8b2e740  diff 4 files (+87 -12)
+
+PASS  protected-paths
+WARN  diff-budget            24/20 files, +910/800, -12/400
+FAIL  test-immutability      append-only · src/lib/order/total.test.ts was deleted
+      src/lib/order/total.test.ts  31 lines removed, append-only allows none
+      remediation: revert-paths
+SKIP  new-test-present       disabled by default
+PASS  no-disabled-tests
+
+N/A   suite-green            no hooks, add .redfirst/ to enable
+N/A   red-green              no hooks, add .redfirst/ to enable
+
+VERDICT: FAIL (1 gate)  exit=1

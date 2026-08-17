@@ -1,0 +1,20 @@
+redfirst v0.4.1 · verify · tier=2 · config=base:redfirst.toml · env_mode=reused · probe_runs=3
+base f3c9a11  head 8b2e740  diff 4 files (+87 -12), tests 1 file (+31)
+
+PASS  protected-paths
+PASS  diff-budget            4/20 files, +87/800, -12/400
+PASS  test-immutability      cases · 0 removed, 0 regressed
+PASS  new-test-present       src/lib/order/total.test.ts
+PASS  no-disabled-tests
+PASS  suite-green            412 passed, 1 flaky (untouched)
+FAIL  red-green              flaky test, base probe is not deterministic
+      case "promo item does not break the total"  base runs: fail, pass, fail
+      remediation: fix-test
+
+WARN  flaky                  tests/integration/webhook.spec.ts passed on retry, not touched by diff
+WARN  guarded-paths          pnpm-lock.yaml
+
+REVIEW NEEDED
+  src/lib/order/total.ts:42   empty catch block added
+
+VERDICT: FAIL (1 gate)  exit=1

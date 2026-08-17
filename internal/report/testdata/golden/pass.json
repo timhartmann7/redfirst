@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "redfirst_version": "0.4.1",
+  "tier": 1,
+  "config_source": "base:redfirst.toml",
+  "base": "f3c9a11",
+  "head": "8b2e740",
+  "verdict": "pass",
+  "exit_code": 0,
+  "diff": {
+    "files": 2,
+    "added": 14,
+    "deleted": 3
+  },
+  "tests": {
+    "files": 1,
+    "added": 9,
+    "deleted": 0
+  },
+  "gates": [
+    {
+      "id": "protected-paths",
+      "status": "pass"
+    },
+    {
+      "id": "diff-budget",
+      "status": "pass",
+      "message": "2/20 files, +14/800, -3/400"
+    },
+    {
+      "id": "test-immutability",
+      "status": "pass",
+      "message": "append-only · 0 removed"
+    },
+    {
+      "id": "new-test-present",
+      "status": "pass",
+      "message": "src/lib/order/total.test.ts"
+    },
+    {
+      "id": "no-disabled-tests",
+      "status": "pass"
+    },
+    {
+      "id": "suppression-scan",
+      "status": "pass"
+    },
+    {
+      "id": "suite-green",
+      "status": "unavailable",
+      "reason": "no hooks",
+      "hint": "add .redfirst/ to enable"
+    },
+    {
+      "id": "red-green",
+      "status": "unavailable",
+      "reason": "no hooks",
+      "hint": "add .redfirst/ to enable"
+    },
+    {
+      "id": "blast-radius",
+      "status": "unavailable",
+      "reason": "no stack trace provided"
+    }
+  ],
+  "warnings": null,
+  "timings": {
+    "total_s": 0.19
+  }
+}

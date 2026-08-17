@@ -1,0 +1,90 @@
+{
+  "schema": 1,
+  "redfirst_version": "0.4.1",
+  "tier": 2,
+  "config_source": "base:redfirst.toml",
+  "base": "f3c9a11",
+  "head": "8b2e740",
+  "env_mode": "reused",
+  "probe_runs": 3,
+  "verdict": "fail",
+  "exit_code": 1,
+  "diff": {
+    "files": 4,
+    "added": 87,
+    "deleted": 12
+  },
+  "tests": {
+    "files": 1,
+    "added": 31,
+    "deleted": 0
+  },
+  "gates": [
+    {
+      "id": "protected-paths",
+      "status": "pass"
+    },
+    {
+      "id": "diff-budget",
+      "status": "pass",
+      "message": "4/20 files, +87/800, -12/400"
+    },
+    {
+      "id": "test-immutability",
+      "status": "pass",
+      "message": "cases · 0 removed, 0 regressed"
+    },
+    {
+      "id": "new-test-present",
+      "status": "pass",
+      "message": "src/lib/order/total.test.ts"
+    },
+    {
+      "id": "no-disabled-tests",
+      "status": "pass"
+    },
+    {
+      "id": "suite-green",
+      "status": "pass",
+      "message": "412 passed, 1 flaky (untouched)"
+    },
+    {
+      "id": "red-green",
+      "status": "fail",
+      "message": "flaky test, base probe is not deterministic",
+      "remediation": "fix-test",
+      "evidence": [
+        {
+          "file": "src/lib/order/total.test.ts",
+          "case": "promo item does not break the total",
+          "base_runs": [
+            "fail",
+            "pass",
+            "fail"
+          ]
+        }
+      ]
+    }
+  ],
+  "warnings": [
+    {
+      "kind": "flaky",
+      "file": "tests/integration/webhook.spec.ts",
+      "detail": "passed on retry, not touched by diff"
+    },
+    {
+      "kind": "guarded-paths",
+      "file": "pnpm-lock.yaml"
+    },
+    {
+      "kind": "suppression",
+      "file": "src/lib/order/total.ts",
+      "line": 42,
+      "pattern": "empty catch",
+      "detail": "empty catch block added"
+    }
+  ],
+  "timings": {
+    "total_s": 214
+  }
+}

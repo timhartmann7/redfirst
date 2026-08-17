@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "redfirst_version": "0.4.1",
+  "tier": 1,
+  "config_source": "defaults",
+  "base": "f3c9a11",
+  "head": "8b2e740",
+  "verdict": "fail",
+  "exit_code": 1,
+  "diff": {
+    "files": 4,
+    "added": 87,
+    "deleted": 12
+  },
+  "tests": {
+    "files": 0,
+    "added": 0,
+    "deleted": 0
+  },
+  "gates": [
+    {
+      "id": "protected-paths",
+      "status": "pass"
+    },
+    {
+      "id": "diff-budget",
+      "status": "warn",
+      "message": "24/20 files, +910/800, -12/400"
+    },
+    {
+      "id": "test-immutability",
+      "status": "fail",
+      "message": "append-only · src/lib/order/total.test.ts was deleted",
+      "remediation": "revert-paths",
+      "evidence": [
+        {
+          "file": "src/lib/order/total.test.ts",
+          "detail": "31 lines removed, append-only allows none"
+        }
+      ]
+    },
+    {
+      "id": "new-test-present",
+      "status": "skip",
+      "reason": "disabled by default"
+    },
+    {
+      "id": "no-disabled-tests",
+      "status": "pass"
+    },
+    {
+      "id": "suite-green",
+      "status": "unavailable",
+      "reason": "no hooks",
+      "hint": "add .redfirst/ to enable"
+    },
+    {
+      "id": "red-green",
+      "status": "unavailable",
+      "reason": "no hooks",
+      "hint": "add .redfirst/ to enable"
+    }
+  ],
+  "warnings": null,
+  "timings": {
+    "total_s": 0.42
+  }
+}

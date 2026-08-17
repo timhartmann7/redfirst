@@ -1,0 +1,15 @@
+redfirst v0.4.1 · verify · tier=1 · config=base:redfirst.toml
+base f3c9a11  head 8b2e740  diff 2 files (+14 -3), tests 1 file (+9)
+
+PASS  protected-paths
+PASS  diff-budget            2/20 files, +14/800, -3/400
+PASS  test-immutability      append-only · 0 removed
+PASS  new-test-present       src/lib/order/total.test.ts
+PASS  no-disabled-tests
+PASS  suppression-scan
+
+N/A   suite-green            no hooks, add .redfirst/ to enable
+N/A   red-green              no hooks, add .redfirst/ to enable
+N/A   blast-radius           no stack trace provided
+
+VERDICT: PASS  exit=0

@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/timhartmann7/redfirst/schema/report.v1.json",
+  "title": "redfirst report, schema v1",
+  "description": "The contract between redfirst and the orchestrator. Adding a field is not a breaking change and needs no version bump; renaming or removing one does.",
+  "type": "object",
+  "required": [
+    "schema",
+    "redfirst_version",
+    "tier",
+    "config_source",
+    "base",
+    "head",
+    "verdict",
+    "exit_code",
+    "diff",
+    "gates"
+  ],
+  "properties": {
+    "schema": {
+      "description": "Version of this contract.",
+      "const": 1
+    },
+    "redfirst_version": {
+      "description": "Release of the binary that produced the report.",
+      "type": "string"
+    },
+    "tier": {
+      "description": "Adoption tier the run operated at.",
+      "type": "integer",
+      "enum": [0, 1, 2]
+    },
+    "config_source": {
+      "description": "Whether project rules or built-in ones judged the diff.",
+      "type": "string",
+      "pattern": "^(defaults|base:.+)$"
+    },
+    "base": {
+      "description": "Abbreviated commit id of the base ref.",
+      "type": "string"
+    },
+    "head": {
+      "description": "Abbreviated commit id of the head ref.",
+      "type": "string"
+    },
+    "env_mode": {
+      "description": "Environment mode the hooks ran under. Absent below tier 2.",
+      "type": "string"
+    },
+    "probe_runs": {
+      "description": "How many times each red-green probe ran. Absent below tier 2.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "diff_digest": {
+      "description": "Digest of the patch under judgement. Published for the orchestrator to deduplicate attempts; redfirst does not use it.",
+      "type": "string"
+    },
+    "base_probe_key": {
+      "description": "Digest identifying the base probe. Published so logs can answer whether a cache would have paid off; redfirst does not use it.",
+      "type": "string"
+    },
+    "verdict": {
+      "description": "Run outcome as a word. The exit code carries the detail.",
+      "type": "string",
+      "enum": ["pass", "fail"]
+    },
+    "exit_code": {
+      "description": "0 pass, 1 gate violation, 2 harness error, 3 invalid config, 4 internal error, 5 no legal move for the agent.",
+      "type": "integer",
+      "enum": [0, 1, 2, 3, 4, 5]
+    },
+    "diff": { "$ref": "#/$defs/stats" },
+    "tests": { "$ref": "#/$defs/stats" },
+    "gates": {
+      "description": "One entry per declared gate, in execution order.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/gate_result" }
+    },
+    "warnings": {
+      "description": "Report lines that never change the verdict.",
+      "type": ["array", "null"],
+      "items": { "$ref": "#/$defs/warning" }
+    },
+    "timings": { "$ref": "#/$defs/timings" }
+  },
+  "$defs": {
+    "stats": {
+      "type": "object",
+      "required": ["files", "added", "deleted"],
+      "additionalProperties": false,
+      "properties": {
+        "files": { "type": "integer", "minimum": 0 },
+        "added": { "type": "integer", "minimum": 0 },
+        "deleted": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "gate_result": {
+      "type": "object",
+      "required": ["id", "status"],
+      "properties": {
+        "id": {
+          "description": "Stable gate identifier.",
+          "type": "string",
+          "enum": [
+            "protected-paths",
+            "diff-budget",
+            "test-immutability",
+            "new-test-present",
+            "no-disabled-tests",
+            "suppression-scan",
+            "suite-green",
+            "red-green",
+            "blast-radius"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pass", "fail", "warn", "skip", "unavailable"]
+        },
+        "message": {
+          "description": "What is wrong, not what got checked.",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Why an unavailable or skipped gate did not run. An unavailable result always carries it.",
+          "type": "string"
+        },
+        "hint": {
+          "description": "How to make an unavailable gate available.",
+          "type": "string"
+        },
+        "remediation": {
+          "description": "Machine-readable next step. A failing gate always carries it; other statuses leave it empty.",
+          "type": "string",
+          "enum": [
+            "revert-paths",
+            "reduce-scope",
+            "add-test",
+            "fix-test",
+            "fix-code",
+            "human-required"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence" }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "unavailable" } }, "required": ["status"] },
+          "then": { "required": ["reason"] }
+        },
+        {
+          "if": { "properties": { "status": { "const": "fail" } }, "required": ["status"] },
+          "then": { "required": ["remediation"] }
+        }
+      ]
+    },
+    "evidence": {
+      "description": "What exactly was violated and where.",
+      "type": "object",
+      "properties": {
+        "file": { "type": "string" },
+        "case": { "type": "string" },
+        "line": { "type": "integer", "minimum": 1 },
+        "base_runs": {
+          "description": "Per-run outcome of the probe on base, in run order.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "head_runs": {
+          "description": "Per-run outcome of the probe on head, in run order.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "detail": { "type": "string" }
+      }
+    },
+    "warning": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["guarded-paths", "suppression", "flaky", "config"]
+        },
+        "file": { "type": "string" },
+        "line": { "type": "integer", "minimum": 1 },
+        "pattern": { "type": "string" },
+        "detail": { "type": "string" }
+      }
+    },
+    "timings": {
+      "description": "The only part of the report that changes between two runs on the same input.",
+      "type": "object",
+      "required": ["total_s"],
+      "properties": {
+        "total_s": { "type": "number", "minimum": 0 },
+        "env_up_s": { "type": "number", "minimum": 0 },
+        "base_probe_s": { "type": "number", "minimum": 0 },
+        "head_probe_s": { "type": "number", "minimum": 0 },
+        "suite_s": { "type": "number", "minimum": 0 },
+        "base_suite_s": { "type": "number", "minimum": 0 }
+      }
+    }
+  }
+}
