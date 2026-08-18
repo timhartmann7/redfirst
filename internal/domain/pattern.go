@@ -53,17 +53,26 @@ func compileGlob(raw string) (globPattern, error) {
 
 // Match reports whether a repository-relative path falls in the set.
 func (p PatternSet) Match(name string) bool {
+	_, ok := p.MatchPattern(name)
+	return ok
+}
+
+// MatchPattern returns the first pattern the path falls under, the way
+// RegexSet.Match returns the expression that fired. `redfirst explain` prints
+// the rule that decided: a bare "protected: yes" leaves a reader arguing with a
+// verdict that points at nothing.
+func (p PatternSet) MatchPattern(name string) (string, bool) {
 	base := path.Base(name)
-	for _, g := range p.globs {
+	for i, g := range p.globs {
 		target := name
 		if g.baseOnly {
 			target = base
 		}
 		if ok, err := doublestar.Match(g.expr, target); err == nil && ok {
-			return true
+			return p.raw[i], true
 		}
 	}
-	return false
+	return "", false
 }
 
 // Raw returns the patterns as written. Config validation compares them and
