@@ -160,7 +160,7 @@ func TestDoctor_TierZeroNamesTheCommandThatReachesTierOne(t *testing.T) {
 
 	wants(t, got,
 		"tier=0",
-		"not found → nothing runs redfirst on a pull request",
+		"no "+cliux.WorkflowPath+" → nothing runs redfirst on a pull request",
 		"not found → using built-in defaults",
 		"not found → red-green, suite-green unavailable",
 		"To reach tier 1:",

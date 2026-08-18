@@ -163,7 +163,10 @@ func (d Doctor) workflowRow(found where) string {
 		return fmt.Sprintf("%s in the working tree, not on %s → "+
 			"no pull request is judged until it is merged", WorkflowPath, d.BaseRef)
 	}
-	return "not found → nothing runs redfirst on a pull request"
+	// The path rather than the fact: a repository whose workflow runs redfirst
+	// under another name reads as tier 0 here, and the reader has to be able to
+	// see why. init --ci generates this one, and paths.protected covers it.
+	return "no " + WorkflowPath + " → nothing runs redfirst on a pull request"
 }
 
 // tier is the adoption state from section 4 of the spec: no files, one
