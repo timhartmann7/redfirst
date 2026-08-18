@@ -34,6 +34,21 @@ if [ -n "${REDFIRST_FILTER:-}" ]; then
 	done
 fi
 
+# The build gets a step of its own, and that is the opposite of tidiness.
+# gotestsum reports a package that fails to build as a case named TestMain, and
+# red-green reads a name it did not see on base as a case the diff added: red on
+# base, absent on head once the fix is there, which refuses the honest fix that
+# adds an API together with the test for it. A tree that does not build has no
+# case to report, so this step leaves $REDFIRST_RESULTS empty instead, which is
+# what red_green.compile_failure_on_base is there to rule on.
+#
+# -run '^$' matches no test, so nothing executes here and the compile is warm
+# for the run below.
+if ! go test -run '^$' $packages >/dev/null; then
+	echo "the packages under test do not build" >&2
+	exit 1
+fi
+
 # -count=1 is not optional. Without it the Go test cache replays the verdict of
 # the previous run, the probe_runs runs of red-green collapse into one, and a
 # test that only sometimes fails passes for one that always does.
