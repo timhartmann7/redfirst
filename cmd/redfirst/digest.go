@@ -29,8 +29,11 @@ type objectSource interface {
 // tell two attempts apart. redfirst never reads it.
 //
 // What a diff is: a commit to start from, and for every path what the diff did
-// to it and what it became. A git object id names content exactly, so two
-// digests agree only where the changed files agree byte for byte. Line counts
+// to it and what it became. Mode and object id are what a git tree entry holds,
+// so two digests agree only where the changed files agree byte for byte and
+// carry the same bits: adding a script and adding the same script executable
+// are two patches, and an orchestrator that took them for one would throw away
+// the attempt that fixed the missing bit. Line counts
 // and added lines would say the same thing less precisely: a patch that deletes
 // a different line while adding the same one carries the same counts and the
 // same added lines, and two distinct attempts would hash alike.
@@ -74,16 +77,25 @@ func testSurface(diff domain.Diff, cfg domain.Config) []domain.FileChange {
 	return files
 }
 
+// fieldsPerChange is what changeFields writes about one file.
+const fieldsPerChange = 4
+
 // changeFields turns the changes into the fields a digest is built from, sorted
 // by head path so the value does not depend on the order git printed them in. A
 // head path is unique inside one diff, which makes the order total.
+//
+// The status stays out, and not by oversight: from one merge base it follows
+// from the rest. Only a deletion leaves the tree entry at zeroes, a rename
+// carries a source path while its source appears nowhere else in the diff, and
+// a copy brings the modified source it was taken from. Nothing a status could
+// separate is left, so hashing it in would add a field no test can pin.
 func changeFields(files []domain.FileChange) []string {
 	sorted := slices.SortedFunc(slices.Values(files), func(a, b domain.FileChange) int {
 		return strings.Compare(a.Path, b.Path)
 	})
-	fields := make([]string, 0, len(sorted)*4)
+	fields := make([]string, 0, len(sorted)*fieldsPerChange)
 	for _, f := range sorted {
-		fields = append(fields, string(f.Status), f.OldPath, f.Path, f.Object)
+		fields = append(fields, f.OldPath, f.Path, f.Mode, f.Object)
 	}
 	return fields
 }

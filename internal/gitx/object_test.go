@@ -8,15 +8,21 @@ import (
 	"github.com/timhartmann7/redfirst/internal/testkit"
 )
 
-// zeroObject is what git prints where a path holds nothing on the side it is
-// reporting: a deletion has no object on head.
-const zeroObject = "0000000000000000000000000000000000000000"
+// What git prints for a tree entry: six octal digits of mode, and forty hex
+// digits of object id. Both go to zeroes on the side where the path holds
+// nothing, which for head means a deletion.
+const (
+	zeroObject     = "0000000000000000000000000000000000000000"
+	zeroMode       = "000000"
+	regularMode    = "100644"
+	executableMode = "100755"
+)
 
-// TestGitx_CarriesTheHeadObjectID pins what identifies a changed file: the id
-// of what it became. The digests the report publishes are built from it, so a
-// diff that lost it would hand the orchestrator a value that no longer names
-// the patch.
-func TestGitx_CarriesTheHeadObjectID(t *testing.T) {
+// TestGitx_CarriesTheHeadTreeEntry pins what identifies a changed file: the
+// mode and the object id of what it became. The digests the report publishes
+// are built from both, so a diff that lost either would hand the orchestrator a
+// value that no longer names the patch.
+func TestGitx_CarriesTheHeadTreeEntry(t *testing.T) {
 	t.Parallel()
 
 	r := testkit.NewRepo(t)
@@ -29,6 +35,7 @@ func TestGitx_CarriesTheHeadObjectID(t *testing.T) {
 	r.Write("src/total.js", moduleEdited)
 	r.Remove("docs/guide.md")
 	r.Write("docs/shipping.md", unrelatedText)
+	r.WriteScript("scripts/build.sh", "#!/bin/sh\nexit 0\n")
 	r.WriteBinary("assets/logo.png", []byte(logoBytes+"\x07\x06"))
 	r.Commit("feat: rework the tree")
 
@@ -38,34 +45,49 @@ func TestGitx_CarriesTheHeadObjectID(t *testing.T) {
 		name string
 		path string
 		want string
+		mode string
 	}{
 		{
 			name: "a modified file names what it became on head",
 			path: "src/total.js",
 			want: r.Git("rev-parse", testkit.FixtureHead+":src/total.js"),
+			mode: regularMode,
 		},
 		{
 			name: "an added file names its new blob",
 			path: "docs/shipping.md",
 			want: r.Git("rev-parse", testkit.FixtureHead+":docs/shipping.md"),
+			mode: regularMode,
+		},
+		{
+			name: "an executable file carries the bit that makes it one",
+			path: "scripts/build.sh",
+			want: r.Git("rev-parse", testkit.FixtureHead+":scripts/build.sh"),
+			mode: executableMode,
 		},
 		{
 			name: "a binary file is identified like any other",
 			path: "assets/logo.png",
 			want: r.Git("rev-parse", testkit.FixtureHead+":assets/logo.png"),
+			mode: regularMode,
 		},
 		{
 			name: "a deleted file holds nothing on head",
 			path: "docs/guide.md",
 			want: zeroObject,
+			mode: zeroMode,
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := fileByPath(t, d, tc.path).Object; got != tc.want {
-				t.Errorf("object of %s = %q, want %q", tc.path, got, tc.want)
+			change := fileByPath(t, d, tc.path)
+			if change.Object != tc.want {
+				t.Errorf("object of %s = %q, want %q", tc.path, change.Object, tc.want)
+			}
+			if change.Mode != tc.mode {
+				t.Errorf("mode of %s = %q, want %q", tc.path, change.Mode, tc.mode)
 			}
 		})
 	}

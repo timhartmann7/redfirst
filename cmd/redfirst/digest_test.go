@@ -19,9 +19,16 @@ const (
 // what their head did.
 func digestRepo(t *testing.T, message string, mutate func(r *testkit.Repo)) *testkit.Repo {
 	t.Helper()
+	return digestRepoFrom(t, digestSource, message, mutate)
+}
+
+// digestRepoFrom is digestRepo with the base content of src/total.js chosen by
+// the caller: two fixtures can then reach one head tree from two bases.
+func digestRepoFrom(t *testing.T, seed, message string, mutate func(r *testkit.Repo)) *testkit.Repo {
+	t.Helper()
 
 	r := testkit.NewRepo(t)
-	r.Write("src/total.js", digestSource)
+	r.Write("src/total.js", seed)
 	r.Write("src/total.test.js", digestTest)
 	r.Write("notes.txt", digestNotes)
 	r.Commit("feat: seed the tree")
@@ -93,6 +100,16 @@ func TestDiffDigest_DiffersWhenTheDiffDiffers(t *testing.T) {
 				r.Write("notes.txt", "one\nthree\nfour\nfive\n")
 			},
 		},
+		{
+			// The tree entry is the mode as much as the content: a retry that
+			// only makes the file executable is a different patch, and an
+			// orchestrator taking it for a repeat would throw away the fix.
+			name: "the same content with the executable bit set",
+			mutate: func(r *testkit.Repo) {
+				r.WriteScript("src/total.js", digestFixed)
+				r.Write("notes.txt", "two\nthree\nfour\nfive\n")
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -102,6 +119,48 @@ func TestDiffDigest_DiffersWhenTheDiffDiffers(t *testing.T) {
 				t.Errorf("digest %q describes both patches", got)
 			}
 		})
+	}
+}
+
+// TestDiffDigest_SeparatesRenamesByTheirSource covers the one field of a change
+// that a head tree cannot show: two branches move a file of identical content
+// onto the same destination, and only the path it came from tells them apart.
+func TestDiffDigest_SeparatesRenamesByTheirSource(t *testing.T) {
+	t.Parallel()
+
+	twins := func(r *testkit.Repo) {
+		r.Write("docs/one.md", digestNotes)
+		r.Write("docs/two.md", digestNotes)
+	}
+	move := func(from string) *testkit.Repo {
+		r := testkit.NewRepo(t)
+		twins(r)
+		r.Commit("docs: write the two notes")
+
+		r.Branch(testkit.FixtureHead)
+		r.Rename(from, "docs/merged.md")
+		r.Commit("docs: merge the notes")
+		return r
+	}
+
+	first, second := digestOf(t, move("docs/one.md")), digestOf(t, move("docs/two.md"))
+	if first == second {
+		t.Errorf("two renames onto one path share the digest %q", first)
+	}
+}
+
+// TestDiffDigest_SeparatesOneHeadTreeReachedFromTwoBases covers the commit the
+// digest opens with. The same head content written over two different bases is
+// two different patches, and every other field of the two records agrees.
+func TestDiffDigest_SeparatesOneHeadTreeReachedFromTwoBases(t *testing.T) {
+	t.Parallel()
+
+	fix := func(r *testkit.Repo) { r.Write("src/total.js", digestFixed) }
+	first := digestOf(t, digestRepoFrom(t, digestSource, "fix: count the items", fix))
+	second := digestOf(t, digestRepoFrom(t, digestSource+"\n", "fix: count the items", fix))
+
+	if first == second {
+		t.Errorf("two bases under one head tree share the digest %q", first)
 	}
 }
 
@@ -122,7 +181,8 @@ func TestBaseProbeKey_NamesTheProbeItsInputsDecide(t *testing.T) {
 
 	repo.Write("src/total.test.js", "test('other', () => {})\n")
 	repo.Commit("test: rewrite the case")
-	if afterTest := runReport(t, repo.Dir).BaseProbeKey; afterTest == first {
+	afterTest := runReport(t, repo.Dir).BaseProbeKey
+	if afterTest == first {
 		t.Error("the key survived a change to the test file the probe overlays")
 	}
 
@@ -130,7 +190,10 @@ func TestBaseProbeKey_NamesTheProbeItsInputsDecide(t *testing.T) {
 	repo.WriteScript(".redfirst/test.sh", "#!/bin/sh\necho rewritten\n")
 	repo.Commit("chore: rewrite the test hook")
 	repo.Checkout(testkit.FixtureHead)
-	if afterHook := runReport(t, repo.Dir).BaseProbeKey; afterHook == first {
+	// Against afterTest, not against first: the key already moved for the test
+	// file, so comparing with first would pass whatever the hooks did, and the
+	// one input that separates this key from a diff digest would go unchecked.
+	if afterHook := runReport(t, repo.Dir).BaseProbeKey; afterHook == afterTest {
 		t.Error("the key survived a change to the hooks that run the probe")
 	}
 }

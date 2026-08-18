@@ -25,6 +25,7 @@ const (
 const (
 	rawFields    = 5
 	rawPrefix    = ":"
+	rawDstMode   = 1
 	rawDstObject = 3
 	rawStatus    = 4
 )
@@ -120,7 +121,10 @@ func parseRaw(s *bufio.Scanner) ([]domain.FileChange, error) {
 		if err != nil {
 			return nil, err
 		}
-		change := domain.FileChange{Path: path, Status: status, Object: meta[rawDstObject]}
+		change := domain.FileChange{
+			Path: path, Status: status,
+			Mode: meta[rawDstMode], Object: meta[rawDstObject],
+		}
 		if status.HasOldPath() {
 			change.OldPath = path
 			if change.Path, err = next(s, "the destination of status "+string(status)); err != nil {

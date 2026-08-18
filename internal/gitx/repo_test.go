@@ -24,15 +24,15 @@ func openFixture(t *testing.T, r *testkit.Repo) *gitx.Repo {
 }
 
 // diffFixture takes the diff every fixture is built for: base to head, with the
-// object ids dropped. Those are content rather than shape, and a want literal
-// carrying a hash would say nothing to a reader;
-// TestGitx_CarriesTheHeadObjectID checks them on their own.
+// tree entry of the file on head dropped. Mode and object id are content rather
+// than shape, and a want literal carrying a hash would say nothing to a reader;
+// TestGitx_CarriesTheHeadTreeEntry checks them on their own.
 func diffFixture(t *testing.T, r *testkit.Repo) domain.Diff {
 	t.Helper()
 
 	d := rawDiffFixture(t, r)
 	for i := range d.Files {
-		d.Files[i].Object = ""
+		d.Files[i].Mode, d.Files[i].Object = "", ""
 	}
 	return d
 }
