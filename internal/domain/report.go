@@ -1,7 +1,9 @@
 package domain
 
-// Version is the redfirst release. S5 replaces it at link time.
-const Version = "0.1.0"
+// Version is the redfirst release. The release build stamps it through
+// -ldflags -X, which is why it is a var; nothing assigns it at runtime, so two
+// runs of one binary still report the same version.
+var Version = "0.1.0"
 
 // SchemaVersion is the report contract in schema/report.v1.json. Adding a
 // field needs no bump; renaming or removing one does.
