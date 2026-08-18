@@ -27,14 +27,18 @@ const cleanFixFixedSource = `export function total(items) {
 }
 `
 
+// The `// case:` lines are what the fixture harness reads; see harness.go.
+// A reader of the fixture sees the same two cases the runner reports.
 const cleanFixTest = `import { total } from './total'
 
+// case: adds prices
 test('adds prices', () => {
   expect(total([{ price: 10 }, { price: 5 }])).toBe(15)
 })
 `
 
 const cleanFixAddedCase = `
+// case: applies a discount | needs: discount
 test('applies a discount', () => {
   expect(total([{ price: 10, discount: 0.5 }])).toBe(5)
 })
@@ -66,16 +70,15 @@ immutability = "cases"
 
 // HookedFix is clean-fix with the tier 2 files added to base: a .redfirst/
 // directory and a config asking for immutability = "cases". Both come from
-// base, so the head commit cannot reach them.
+// base, so the head commit cannot reach them. Every gate passes on it, the two
+// that run the harness included.
 func HookedFix(t *testing.T) *Repo {
 	t.Helper()
 
 	r := NewRepo(t)
 	writeCleanFixBase(r)
 	r.Write("redfirst.toml", hookedFixConfig)
-	r.WriteScript(".redfirst/env-up.sh", "#!/bin/sh\n")
-	r.WriteScript(".redfirst/test.sh", "#!/bin/sh\n")
-	r.WriteScript(".redfirst/env-down.sh", "#!/bin/sh\n")
+	WriteHooks(r, Hooks{})
 	r.Commit("feat: add the order total and the redfirst hooks")
 
 	r.Branch(FixtureHead)
