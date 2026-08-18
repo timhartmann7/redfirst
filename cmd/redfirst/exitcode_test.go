@@ -101,10 +101,28 @@ func TestVerify_EveryExitCodeHasAPathThroughTheCLI(t *testing.T) {
 			want: 3,
 		},
 		{
-			name:  "an internal error nobody can act on",
+			name:  "a flag the binary cannot honour",
 			build: testkit.CleanFix,
 			args:  []string{"--no-hooks", "--gates", "no-such-gate"},
 			want:  4,
+		},
+		{
+			// The verdict of a static gate reaches the exit status through a
+			// short path. This one goes through the environment, the probes and
+			// the case arithmetic, which is the path a tier 2 run actually takes.
+			name: "fake-test",
+			build: func(t testing.TB) *testkit.Repo {
+				r := testkit.HookedFix(t)
+				r.Write("src/total.test.js", fakeCaseTest)
+				r.Commit("test: add a case that passes without the fix")
+				return r
+			},
+			want: 1,
+		},
+		{
+			name:  "broken-base-suite",
+			build: brokenBaseSuite,
+			want:  2,
 		},
 		{
 			name: "no-case-names",
@@ -140,6 +158,87 @@ func verifyArgsWithHooks(repoDir string) []string {
 		"--repo", repoDir,
 		"--base", testkit.FixtureBase,
 		"--head", testkit.FixtureHead,
+	}
+}
+
+// fakeCaseTest appends a case that asserts nothing the fix decides, so it is
+// green on base already and proves nothing about the bug.
+const fakeCaseTest = `import { total } from './total'
+
+// case: adds prices
+test('adds prices', () => {
+  expect(total([{ price: 10 }, { price: 5 }])).toBe(15)
+})
+
+// case: applies a discount
+test('applies a discount', () => {
+  expect(true).toBe(true)
+})
+`
+
+// brokenBaseSuite is a repository that was already broken when the agent
+// arrived: one test is red on head and red on base alike, and the diff never
+// touches it. The agent answers for what it wrote, so the bill goes to the
+// repository, and the run pays for a suite on base only on this rare path.
+func brokenBaseSuite(t testing.TB) *testkit.Repo {
+	t.Helper()
+
+	r := testkit.NewRepo(t)
+	r.Write("src/total.js", "export const total = () => 0\n")
+	r.Write("src/total.test.js", "// case: adds prices\n")
+	r.Write("src/legacy.test.js", "// case: legacy rounding | broken\n")
+	testkit.WriteHooks(r, testkit.Hooks{})
+	r.Commit("feat: add the order total and the hooks")
+
+	r.Branch(testkit.FixtureHead)
+	r.Write("src/total.js", "export const total = (items) => items.length\n")
+	r.Write("src/total.test.js", "// case: adds prices\n// case: counts items | needs: length\n")
+	r.Commit("fix: count the items")
+	return r
+}
+
+// TestVerify_AFakeTestIsRefusedByRedGreenEndToEnd names the gate behind the
+// exit code above. Any refusal would satisfy a 1, and a fake test refused by
+// the wrong gate is a run that proved nothing while looking as though it had.
+func TestVerify_AFakeTestIsRefusedByRedGreenEndToEnd(t *testing.T) {
+	t.Parallel()
+
+	repo := testkit.HookedFix(t)
+	repo.Write("src/total.test.js", fakeCaseTest)
+	repo.Commit("test: add a case that passes without the fix")
+
+	rep := runReport(t, repo.Dir)
+
+	got := gateByID(t, rep, domain.GateRedGreen)
+	if got.Message != "test is green on base, it does not cover the fix" {
+		t.Errorf("red-green says %q (%s)", got.Message, got.Status)
+	}
+	if got.Remediation != domain.RemediationFixTest {
+		t.Errorf("remediation = %q, want %q", got.Remediation, domain.RemediationFixTest)
+	}
+	// The line names the case rather than the file: in a file of twenty cases,
+	// "the file went red" tells a reviewer nothing.
+	if len(got.Evidence) != 1 || got.Evidence[0].Case != "applies a discount" {
+		t.Errorf("evidence = %+v, want the case that was green on base", got.Evidence)
+	}
+}
+
+// TestVerify_ASuiteRedOnBaseTooBlamesTheRepository is the other origin of an
+// exit code 2, and the expensive one: the suite runs on base only when the head
+// suite is red, the failures are untouched by the diff and the retry did not
+// help. We pay for the 1 against 2 split at the moment it matters.
+func TestVerify_ASuiteRedOnBaseTooBlamesTheRepository(t *testing.T) {
+	t.Parallel()
+
+	err := run(context.Background(), verifyArgsWithHooks(brokenBaseSuite(t).Dir), io.Discard, io.Discard)
+
+	if got := domain.ExitCode(err); got != 2 {
+		t.Fatalf("exit code = %d, want 2: %v", got, err)
+	}
+	for _, want := range []string{"legacy rounding", "broken before the diff"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not carry %q: %v", want, err)
+		}
 	}
 }
 
