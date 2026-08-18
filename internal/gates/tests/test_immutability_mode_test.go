@@ -49,10 +49,10 @@ func TestTestImmutability_RequiresCaseNamesWhenEitherModeIsCases(t *testing.T) {
 		want     []domain.Capability
 	}{
 		{"TestFilesJudgeOutcomes", domain.ImmutabilityCases, domain.ImmutabilityWarn, []domain.Capability{
-			domain.CapDiff, domain.CapCaseNames,
+			domain.CapDiff, domain.CapHooks, domain.CapCaseNames,
 		}},
 		{"TestSurfaceJudgesOutcomes", domain.ImmutabilityAppendOnly, domain.ImmutabilityCases, []domain.Capability{
-			domain.CapDiff, domain.CapCaseNames,
+			domain.CapDiff, domain.CapHooks, domain.CapCaseNames,
 		}},
 		{"StrictReadsLines", domain.ImmutabilityStrict, domain.ImmutabilityStrict, []domain.Capability{domain.CapDiff}},
 		{"AppendOnlyReadsLines", domain.ImmutabilityAppendOnly, domain.ImmutabilityWarn, []domain.Capability{domain.CapDiff}},
@@ -71,12 +71,12 @@ func TestTestImmutability_RequiresCaseNamesWhenEitherModeIsCases(t *testing.T) {
 	}
 }
 
-// TestTestImmutability_ModeWithoutCaseNamesIsOurBugNotAPass holds the direction
-// the gate may not fail in. Mode cases judges outcomes, the runner grants the
-// capability that carries them, and a gate reaching Run without them has been
-// handed something impossible: exit code 4 says so, where a pass would acquit a
-// diff nobody checked.
-func TestTestImmutability_ModeWithoutCaseNamesIsOurBugNotAPass(t *testing.T) {
+// TestTestImmutability_CasesModeWithoutAnEnvironmentIsOurBugNotAPass holds the
+// direction the gate may not fail in. Mode cases judges outcomes, the runner
+// brings up the harness that produces them, and a gate reaching Run without one
+// has been handed something impossible: exit code 4 says so, where a pass would
+// acquit a diff nobody checked.
+func TestTestImmutability_CasesModeWithoutAnEnvironmentIsOurBugNotAPass(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -92,7 +92,6 @@ func TestTestImmutability_ModeWithoutCaseNamesIsOurBugNotAPass(t *testing.T) {
 			"TestSurface", domain.ImmutabilityAppendOnly, domain.ImmutabilityCases,
 			removed("src/__snapshots__/total.snap", 4),
 		},
-		{"AModeNobodyWrote", "", "", removed("src/total.test.js", 9)},
 	}
 
 	for _, tc := range cases {

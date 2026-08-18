@@ -9,18 +9,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/timhartmann7/redfirst/internal/domain"
-)
-
-// Phase is one half of red-green, plus the suite run. The source tree differs
-// between phases, so each gets its own working copy.
-type Phase string
-
-const (
-	PhaseBase  Phase = "base"
-	PhaseHead  Phase = "head"
-	PhaseSuite Phase = "suite"
 )
 
 // Worktree is one phase's working copy.
@@ -33,28 +24,16 @@ const (
 // not exist green.
 type Worktree struct {
 	session *Session
-	phase   Phase
+	phase   domain.Phase
 	dir     string
 	// runs is $REDFIRST_PROBE_INDEX, counted inside this phase and starting
 	// at one.
 	runs int
 }
 
-// Result is one execution of test.sh.
-type Result struct {
-	// Index is the run's number inside its phase.
-	Index int
-	// Green is the exit code being zero. What green means is the hook's call.
-	Green bool
-	// Cases is what the results file named. It stays empty where the harness
-	// reports no per-case results, which costs the run a capability rather than
-	// failing it.
-	Cases []Case
-}
-
 // Worktree lays tree out as the working copy of a phase. A phase started twice
 // is built again from scratch.
-func (s *Session) Worktree(ctx context.Context, phase Phase, tree string) (*Worktree, error) {
+func (s *Session) Worktree(ctx context.Context, phase domain.Phase, tree string) (*Worktree, error) {
 	dir := filepath.Join(s.dir, "work-"+string(phase))
 	if err := os.RemoveAll(dir); err != nil {
 		return nil, fmt.Errorf("%w: clear %s: %w", domain.ErrHarness, dir, err)
@@ -71,10 +50,10 @@ func (w *Worktree) Dir() string { return w.dir }
 
 // Run executes test.sh once inside the working copy and reads what it wrote.
 // An empty filter runs the whole suite.
-func (w *Worktree) Run(ctx context.Context, filter []string) (res Result, err error) {
+func (w *Worktree) Run(ctx context.Context, filter []string) (res domain.Run, err error) {
 	s := w.session
 	if err = s.beforeRun(ctx); err != nil {
-		return Result{}, err
+		return domain.Run{}, err
 	}
 	if s.mode == ModeFresh {
 		defer func() {
@@ -89,36 +68,29 @@ func (w *Worktree) Run(ctx context.Context, filter []string) (res Result, err er
 
 	results := filepath.Join(s.dir, "results", fmt.Sprintf("%s-%d", w.phase, w.runs))
 	if mkErr := os.MkdirAll(filepath.Dir(results), 0o755); mkErr != nil {
-		return Result{}, fmt.Errorf("%w: create the results directory: %w", domain.ErrHarness, mkErr)
+		return domain.Run{}, fmt.Errorf("%w: create the results directory: %w", domain.ErrHarness, mkErr)
 	}
 	// A phase started again numbers its runs from one again, and a hook that
 	// dies before writing has to leave the run with nothing rather than with
 	// what the run before it wrote.
 	if rmErr := os.Remove(results); rmErr != nil && !errors.Is(rmErr, fs.ErrNotExist) {
-		return Result{}, fmt.Errorf("%w: clear %s: %w", domain.ErrHarness, results, rmErr)
+		return domain.Run{}, fmt.Errorf("%w: clear %s: %w", domain.ErrHarness, results, rmErr)
 	}
 
+	started := time.Now()
 	run, err := s.hooks.run(ctx, s.hooks.test, w.dir, w.env(results, filter))
+	// Timed around the hook alone. Reading what it wrote is the core's work,
+	// and billing it to the project would flatter exactly the number the third
+	// performance budget exists to keep honest.
+	took := time.Since(started)
 	if err != nil {
-		return Result{}, err
+		return domain.Run{}, err
 	}
 	cases, err := readResults(results)
 	if err != nil {
-		return Result{}, err
+		return domain.Run{}, err
 	}
-	return Result{Index: w.runs, Green: run.ok, Cases: cases}, nil
-}
-
-// Named reports whether the results carry per-case names. It is what the runner
-// turns into CapCaseNames: without them red-green cannot tell a case the diff
-// added from one both versions of the file already held.
-func (r Result) Named() bool {
-	for _, c := range r.Cases {
-		if c.Name != "" {
-			return true
-		}
-	}
-	return false
+	return domain.Run{Index: w.runs, Took: took, Green: run.ok, Cases: cases}, nil
 }
 
 // beforeRun readies the services for one more run: fresh mode brings them up

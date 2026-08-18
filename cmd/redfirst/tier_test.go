@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"testing"
 
@@ -12,6 +13,10 @@ import (
 )
 
 // runReport runs verify over a fixture and returns the parsed report.
+//
+// A refusal is an answer rather than a failure here: the report is written
+// before verify returns the verdict, and what these tests read is the report.
+// Anything else is a run that produced none.
 func runReport(t *testing.T, repoDir string, extra ...string) domain.Report {
 	t.Helper()
 
@@ -24,7 +29,8 @@ func runReport(t *testing.T, repoDir string, extra ...string) domain.Report {
 	}, extra...)
 
 	var out bytes.Buffer
-	if err := run(context.Background(), args, &out, io.Discard); err != nil {
+	err := run(context.Background(), args, &out, io.Discard)
+	if err != nil && !errors.Is(err, domain.ErrGateViolation) && !errors.Is(err, domain.ErrHumanRequired) {
 		t.Fatalf("verify: %v", err)
 	}
 	var rep domain.Report

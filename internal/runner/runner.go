@@ -13,6 +13,12 @@ type Options struct {
 	Config domain.Config
 	Caps   CapSet
 	Only   []domain.GateID // --gates; empty means every gate
+	// Open brings the project's environment up and hands back the probe the
+	// executing gates read it through. The runner calls it at most once, right
+	// before the first gate that needs hooks, and never once a static gate has
+	// refused: that lazy call is what the short-circuit is worth. Nil where the
+	// run has no hooks.
+	Open func(ctx context.Context) (domain.Probe, error)
 }
 
 // Run executes every registered gate in order and returns one result per gate,
@@ -24,7 +30,11 @@ func Run(ctx context.Context, diff domain.Diff, opts Options) ([]domain.GateResu
 func runEntries(
 	ctx context.Context, entries []Entry, diff domain.Diff, opts Options,
 ) ([]domain.GateResult, error) {
-	ex := execution{opts: opts, in: domain.Input{Diff: diff, Config: opts.Config}}
+	ex := execution{
+		opts: opts,
+		in:   domain.Input{Diff: diff, Config: opts.Config},
+		caps: opts.Caps,
+	}
 	results := make([]domain.GateResult, 0, len(entries))
 	for _, e := range entries {
 		res, err := ex.step(ctx, e)
@@ -41,8 +51,14 @@ func runEntries(
 type execution struct {
 	opts Options
 	in   domain.Input
+	// caps grows during the walk: CapCaseNames arrives with the inventory run,
+	// which happens ahead of the first gate that reads it and not before.
+	caps CapSet
 	// failed is the first gate that refused. It arms the short-circuit.
 	failed domain.GateID
+	// opened records that the environment was brought up, so a second gate
+	// asking for it does not pay for a second one.
+	opened bool
 }
 
 func (ex *execution) step(ctx context.Context, e Entry) (domain.GateResult, error) {
@@ -69,19 +85,53 @@ func (ex *execution) decide(ctx context.Context, id domain.GateID, gate Gate) (d
 		return skipped("disabled in config"), nil
 	}
 	requires := gate.Requires()
-	if c, missing := firstMissing(requires, ex.opts.Caps); missing {
+	if slices.Contains(requires, domain.CapHooks) && ex.caps.Has(domain.CapHooks) {
+		// The short-circuit: static gates cost milliseconds, the environment
+		// costs minutes, and a diff already refused earns neither.
+		if ex.failed != "" {
+			return skipped(fmt.Sprintf("short-circuit: %s failed", ex.failed)), nil
+		}
+		if err := ex.bringUp(ctx); err != nil {
+			return domain.GateResult{}, err
+		}
+	}
+	if c, missing := firstMissing(requires, ex.caps); missing {
 		return domain.GateResult{
 			Status: domain.StatusUnavailable,
 			Reason: c.MissingReason(),
 			Hint:   c.MissingHint(),
 		}, nil
 	}
-	// The short-circuit: static gates cost milliseconds, the environment costs
-	// minutes, and a diff already refused earns neither.
-	if ex.failed != "" && slices.Contains(requires, domain.CapHooks) {
-		return skipped(fmt.Sprintf("short-circuit: %s failed", ex.failed)), nil
-	}
 	return gate.Run(ctx, ex.in)
+}
+
+// bringUp starts the environment and performs the inventory run.
+//
+// The inventory is what CapCaseNames comes from, and the spec puts it ahead of
+// any tier 2 gate for that reason: a gate never runs with a capability nobody
+// has settled. A diff that modifies no existing test file has no inventory to
+// run and no existing case to lose, so the capability holds there with nothing
+// to show for it.
+func (ex *execution) bringUp(ctx context.Context) error {
+	if ex.opened || ex.opts.Open == nil {
+		return nil
+	}
+	ex.opened = true
+
+	probe, err := ex.opts.Open(ctx)
+	if err != nil {
+		return err
+	}
+	ex.in.Probe = probe
+
+	inventory, err := probe.Inventory(ctx)
+	if err != nil {
+		return err
+	}
+	if len(inventory) == 0 || inventory.Named() {
+		ex.caps |= NewCapSet(domain.CapCaseNames)
+	}
+	return nil
 }
 
 // applySeverity downgrades a refusal the config declared non-blocking. The

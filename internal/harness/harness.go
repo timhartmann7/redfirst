@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/timhartmann7/redfirst/internal/domain"
 )
@@ -61,8 +62,12 @@ type Session struct {
 	runID string
 	// runs counts the test.sh invocations of the whole session, which is what
 	// decides whether a reset is due. The probe index counts inside a phase.
-	runs   int
-	closed bool
+	runs int
+	// envTime is what the service layer cost: env-up.sh, env-reset.sh and
+	// env-down.sh together. It reaches the report, where the core's own share
+	// of a tier 2 run is what is left after the hooks are subtracted.
+	envTime time.Duration
+	closed  bool
 }
 
 // Open copies the hooks out of the base ref and brings the services up.
@@ -136,13 +141,24 @@ func (s *Session) Close(ctx context.Context) error {
 	return err
 }
 
+// EnvTime is what the service layer has cost so far.
+func (s *Session) EnvTime() time.Duration { return s.envTime }
+
 // up brings the services up, and tears down whatever came up before the script
 // gave in: env-up.sh failing halfway is the ordinary way a compose file fails.
 func (s *Session) up(ctx context.Context) error {
-	if err := s.hooks.mustRun(ctx, s.hooks.up, s.hooks.dir, s.env()); err != nil {
+	if err := s.runEnv(ctx, s.hooks.up); err != nil {
 		return errors.Join(err, s.down(ctx))
 	}
 	return nil
+}
+
+// runEnv executes one service-layer hook and bills the time to the session.
+func (s *Session) runEnv(ctx context.Context, script string) error {
+	started := time.Now()
+	defer func() { s.envTime += time.Since(started) }()
+
+	return s.hooks.mustRun(ctx, script, s.hooks.dir, s.env())
 }
 
 // down runs env-down.sh on a context of its own.
@@ -155,11 +171,11 @@ func (s *Session) down(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), teardownGrace)
 	defer cancel()
 
-	return s.hooks.mustRun(ctx, s.hooks.down, s.hooks.dir, s.env())
+	return s.runEnv(ctx, s.hooks.down)
 }
 
 func (s *Session) reset(ctx context.Context) error {
-	return s.hooks.mustRun(ctx, s.hooks.reset, s.hooks.dir, s.env())
+	return s.runEnv(ctx, s.hooks.reset)
 }
 
 // env is what every hook gets. Only test.sh gets more.

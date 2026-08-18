@@ -206,7 +206,7 @@ func TestBaseProbeKey_AbsentWhereNoProbeWouldRun(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		repo  func(t *testing.T) *testkit.Repo
+		repo  func(t testing.TB) *testkit.Repo
 		extra []string
 	}{
 		{
@@ -220,7 +220,7 @@ func TestBaseProbeKey_AbsentWhereNoProbeWouldRun(t *testing.T) {
 		},
 		{
 			name: "hooks, but the diff touches no test file",
-			repo: func(t *testing.T) *testkit.Repo {
+			repo: func(t testing.TB) *testkit.Repo {
 				t.Helper()
 
 				r := testkit.NewRepo(t)

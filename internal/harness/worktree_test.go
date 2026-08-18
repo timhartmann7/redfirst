@@ -18,7 +18,7 @@ import (
 	"github.com/timhartmann7/redfirst/internal/testkit"
 )
 
-func worktree(t *testing.T, s *harness.Session, phase harness.Phase, tree string) *harness.Worktree {
+func worktree(t *testing.T, s *harness.Session, phase domain.Phase, tree string) *harness.Worktree {
 	t.Helper()
 
 	w, err := s.Worktree(t.Context(), phase, tree)
@@ -28,7 +28,7 @@ func worktree(t *testing.T, s *harness.Session, phase harness.Phase, tree string
 	return w
 }
 
-func mustRun(t *testing.T, w *harness.Worktree, filter ...string) harness.Result {
+func mustRun(t *testing.T, w *harness.Worktree, filter ...string) domain.Run {
 	t.Helper()
 
 	res, err := w.Run(t.Context(), filter)
@@ -49,11 +49,11 @@ func TestWorktree_InstallsDependenciesOncePerPhaseNotPerRun(t *testing.T) {
 	s := f.open(t, false)
 	defer closeSession(t, t.Context(), s)
 
-	base := worktree(t, s, harness.PhaseBase, testkit.FixtureBase)
+	base := worktree(t, s, domain.PhaseBase, testkit.FixtureBase)
 	for range 3 {
 		mustRun(t, base)
 	}
-	head := worktree(t, s, harness.PhaseHead, testkit.FixtureHead)
+	head := worktree(t, s, domain.PhaseHead, testkit.FixtureHead)
 	mustRun(t, head)
 
 	if got := f.count("install base"); got != 1 {
@@ -76,9 +76,9 @@ func TestWorktree_ProbeIndexCountsInsideThePhase(t *testing.T) {
 	s := f.open(t, false)
 	defer closeSession(t, t.Context(), s)
 
-	base := worktree(t, s, harness.PhaseBase, testkit.FixtureBase)
+	base := worktree(t, s, domain.PhaseBase, testkit.FixtureBase)
 	first, second := mustRun(t, base), mustRun(t, base)
-	head := mustRun(t, worktree(t, s, harness.PhaseHead, testkit.FixtureHead))
+	head := mustRun(t, worktree(t, s, domain.PhaseHead, testkit.FixtureHead))
 
 	if first.Index != 1 || second.Index != 2 || head.Index != 1 {
 		t.Errorf("probe indexes are %d, %d and %d, want 1, 2 and 1", first.Index, second.Index, head.Index)
@@ -100,10 +100,10 @@ func TestWorktree_EachPhaseGetsAWorkingCopyOfItsOwn(t *testing.T) {
 	s := f.open(t, false)
 	defer closeSession(t, t.Context(), s)
 
-	base := worktree(t, s, harness.PhaseBase, testkit.FixtureBase)
+	base := worktree(t, s, domain.PhaseBase, testkit.FixtureBase)
 	mustRun(t, base)
 	mustRun(t, base)
-	head := worktree(t, s, harness.PhaseHead, testkit.FixtureHead)
+	head := worktree(t, s, domain.PhaseHead, testkit.FixtureHead)
 	mustRun(t, head)
 
 	if base.Dir() == head.Dir() {
@@ -128,8 +128,8 @@ func TestWorktree_LaysOutTheTreeOfItsPhase(t *testing.T) {
 	s := f.open(t, false)
 	defer closeSession(t, t.Context(), s)
 
-	base := worktree(t, s, harness.PhaseBase, testkit.FixtureBase)
-	head := worktree(t, s, harness.PhaseHead, testkit.FixtureHead)
+	base := worktree(t, s, domain.PhaseBase, testkit.FixtureBase)
+	head := worktree(t, s, domain.PhaseHead, testkit.FixtureHead)
 
 	if got := readFile(t, base.Dir(), "src/total.js"); !strings.Contains(got, "=> 0") {
 		t.Errorf("the base working copy holds %q", got)
@@ -148,7 +148,7 @@ func TestWorktree_PassesTheFilterToTestSh(t *testing.T) {
 	s := f.open(t, false)
 	defer closeSession(t, t.Context(), s)
 
-	w := worktree(t, s, harness.PhaseBase, testkit.FixtureBase)
+	w := worktree(t, s, domain.PhaseBase, testkit.FixtureBase)
 	mustRun(t, w, "src/total.test.js", "src/order.test.js")
 	mustRun(t, w)
 
@@ -173,14 +173,14 @@ func TestWorktree_ReportsTheCasesTheHarnessNamed(t *testing.T) {
 	s := f.open(t, false)
 	defer closeSession(t, t.Context(), s)
 
-	res := mustRun(t, worktree(t, s, harness.PhaseBase, testkit.FixtureBase))
+	res := mustRun(t, worktree(t, s, domain.PhaseBase, testkit.FixtureBase))
 
 	if !res.Green {
 		t.Error("a run that exited zero is green")
 	}
-	want := []harness.Case{
-		{File: "src/total.test.js", Name: "adds prices", Outcome: harness.OutcomePass},
-		{File: "src/total.test.js", Name: "rounds the total", Outcome: harness.OutcomeSkip},
+	want := []domain.Case{
+		{File: "src/total.test.js", Name: "adds prices", Outcome: domain.CasePass},
+		{File: "src/total.test.js", Name: "rounds the total", Outcome: domain.CaseSkip},
 	}
 	if !slices.Equal(res.Cases, want) {
 		t.Errorf("cases = %v\nwant %v", res.Cases, want)
@@ -198,14 +198,14 @@ func TestWorktree_ARedRunIsAnAnswerNotAHarnessFailure(t *testing.T) {
 	s := f.open(t, false)
 	defer closeSession(t, t.Context(), s)
 
-	res, err := worktree(t, s, harness.PhaseBase, testkit.FixtureBase).Run(t.Context(), nil)
+	res, err := worktree(t, s, domain.PhaseBase, testkit.FixtureBase).Run(t.Context(), nil)
 	if err != nil {
 		t.Fatalf("a red run reported an error: %v", err)
 	}
 	if res.Green {
 		t.Error("a run that exited non-zero is not green")
 	}
-	if len(res.Cases) != 1 || res.Cases[0].Outcome != harness.OutcomeFail {
+	if len(res.Cases) != 1 || res.Cases[0].Outcome != domain.CaseFail {
 		t.Errorf("cases = %v, want the one failure", res.Cases)
 	}
 }
@@ -227,7 +227,7 @@ func TestWorktree_ResultsWithoutNamesWithholdCapCaseNames(t *testing.T) {
 			s := f.open(t, false)
 			defer closeSession(t, t.Context(), s)
 
-			res := mustRun(t, worktree(t, s, harness.PhaseBase, testkit.FixtureBase))
+			res := mustRun(t, worktree(t, s, domain.PhaseBase, testkit.FixtureBase))
 			if res.Named() != want {
 				t.Errorf("Named() = %v, want %v for cases %v", res.Named(), want, res.Cases)
 			}
@@ -255,11 +255,11 @@ func TestWorktree_ReadsTAPAsReadilyAsJUnit(t *testing.T) {
 	s := f.open(t, false)
 	defer closeSession(t, t.Context(), s)
 
-	res := mustRun(t, worktree(t, s, harness.PhaseBase, testkit.FixtureBase))
+	res := mustRun(t, worktree(t, s, domain.PhaseBase, testkit.FixtureBase))
 
-	want := []harness.Case{
-		{Name: "adds prices", Outcome: harness.OutcomePass},
-		{Name: "applies a discount", Outcome: harness.OutcomeFail},
+	want := []domain.Case{
+		{Name: "adds prices", Outcome: domain.CasePass},
+		{Name: "applies a discount", Outcome: domain.CaseFail},
 	}
 	if !slices.Equal(res.Cases, want) {
 		t.Errorf("cases = %v\nwant %v", res.Cases, want)
@@ -284,8 +284,8 @@ func TestWorktree_APhaseStartedAgainReadsNoResultsButItsOwn(t *testing.T) {
 	s := f.open(t, false)
 	defer closeSession(t, t.Context(), s)
 
-	first := mustRun(t, worktree(t, s, harness.PhaseBase, testkit.FixtureBase))
-	second := mustRun(t, worktree(t, s, harness.PhaseBase, testkit.FixtureBase))
+	first := mustRun(t, worktree(t, s, domain.PhaseBase, testkit.FixtureBase))
+	second := mustRun(t, worktree(t, s, domain.PhaseBase, testkit.FixtureBase))
 
 	if len(first.Cases) != 1 {
 		t.Fatalf("the first run read %v, want the one case the hook reported", first.Cases)
@@ -308,7 +308,7 @@ func TestWorktree_TheDeadlineKillsTheProcessTreeAndTearsDown(t *testing.T) {
 	s := f.open(t, false)
 	defer closeSession(t, t.Context(), s)
 
-	w := worktree(t, s, harness.PhaseBase, testkit.FixtureBase)
+	w := worktree(t, s, domain.PhaseBase, testkit.FixtureBase)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 

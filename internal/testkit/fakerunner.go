@@ -143,10 +143,6 @@ const fakeRunnerEpilogue = `	printf '  </testsuite>\n</testsuites>\n'
 exit "$failed"
 `
 
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
-}
-
 func xmlEscape(s string) string {
 	return strings.NewReplacer(
 		"&", "&amp;",

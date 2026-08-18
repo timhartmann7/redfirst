@@ -140,10 +140,8 @@ func TestAssemble_GateWarningsReachTheReportInGateOrder(t *testing.T) {
 		{ID: domain.GateSuppressionScan, Status: domain.StatusPass, Warnings: []domain.Warning{suppression}},
 	}
 
-	rep := assemble(
-		domain.Diff{}, domain.Config{}, "defaults",
-		runner.NewCapSet(domain.CapDiff), results, []domain.Warning{downgrade},
-	)
+	j := judgement{source: "defaults", caps: runner.NewCapSet(domain.CapDiff), warnings: []domain.Warning{downgrade}}
+	rep := j.assemble(results)
 
 	want := []domain.Warning{downgrade, guarded, suppression}
 	if !slices.Equal(rep.Warnings, want) {

@@ -85,13 +85,16 @@ func TestRegistry_AllDeclaredGatesRegistered(t *testing.T) {
 func TestRunner_RunOverAnEmptyDiffAccusesNobody(t *testing.T) {
 	t.Parallel()
 
-	// Every capability is present, so nothing hides behind unavailable: what
-	// the run reports is what the gates themselves return.
-	caps := runner.NewCapSet(
-		domain.CapDiff, domain.CapHooks, domain.CapTestFiles, domain.CapCaseNames, domain.CapStackTrace,
-	)
+	// Every capability an empty diff can produce is present, so the gates
+	// answer for themselves rather than hide behind a missing hook. The two
+	// that come out of the diff are absent because the diff is: an empty diff
+	// carries no test file and no case name to derive them from.
+	caps := runner.NewCapSet(domain.CapDiff, domain.CapHooks, domain.CapStackTrace)
+	probe := &fakeProbe{suite: domain.Runs{{Index: 1, Green: true}}}
 
-	results, err := runner.Run(context.Background(), domain.Diff{}, runner.Options{Caps: caps})
+	results, err := runner.Run(context.Background(), domain.Diff{}, runner.Options{
+		Caps: caps, Open: probe.open,
+	})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -102,14 +105,15 @@ func TestRunner_RunOverAnEmptyDiffAccusesNobody(t *testing.T) {
 		switch r.Status {
 		case domain.StatusPass:
 			// An implemented gate that found nothing in an empty diff.
-		case domain.StatusSkip:
-			// A stub, or a gate a config key switched off. Either way the
-			// line has to say which, and the reason is the only place it can.
+		case domain.StatusSkip, domain.StatusUnavailable:
+			// A stub, a gate a config key switched off, or one an empty diff
+			// left nothing to judge. Either way the line has to say which, and
+			// the reason is the only place it can.
 			if r.Reason == "" {
-				t.Errorf("gate %q skipped without a reason", r.ID)
+				t.Errorf("gate %q is %q without a reason", r.ID, r.Status)
 			}
 		default:
-			t.Errorf("gate %q: status %q, want pass or a skip", r.ID, r.Status)
+			t.Errorf("gate %q: status %q, want a pass, a skip or an unavailable line", r.ID, r.Status)
 		}
 	}
 	if code := domain.ExitCode(runner.Outcome(results)); code != 0 {

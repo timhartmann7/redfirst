@@ -63,6 +63,11 @@
   ],
   "warnings": null,
   "timings": {
-    "total_s": 0.42
+    "total_s": 0.42,
+    "env_up_s": 0,
+    "base_probe_s": 0,
+    "head_probe_s": 0,
+    "suite_s": 0,
+    "base_suite_s": 0
   }
 }

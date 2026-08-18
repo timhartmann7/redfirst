@@ -35,7 +35,7 @@ func TestSession_ReusedModeBringsTheServicesUpOnceAndResetsBetweenRuns(t *testin
 	if s.Mode() != harness.ModeReused {
 		t.Fatalf("mode = %q, want %q: the hook set carries env-reset.sh", s.Mode(), harness.ModeReused)
 	}
-	w, err := s.Worktree(t.Context(), harness.PhaseBase, testkit.FixtureBase)
+	w, err := s.Worktree(t.Context(), domain.PhaseBase, testkit.FixtureBase)
 	if err != nil {
 		t.Fatalf("base worktree: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestSession_FreshModeCyclesTheServicesAroundEveryRun(t *testing.T) {
 	if s.Mode() != harness.ModeFresh {
 		t.Fatalf("mode = %q, want %q without env-reset.sh", s.Mode(), harness.ModeFresh)
 	}
-	w, err := s.Worktree(t.Context(), harness.PhaseBase, testkit.FixtureBase)
+	w, err := s.Worktree(t.Context(), domain.PhaseBase, testkit.FixtureBase)
 	if err != nil {
 		t.Fatalf("base worktree: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestSession_AServiceLeftRunningDoesNotHoldTheRunOpen(t *testing.T) {
 	s := f.open(t, false)
 	defer closeSession(t, t.Context(), s)
 
-	if _, err := worktree(t, s, harness.PhaseBase, testkit.FixtureBase).Run(t.Context(), nil); err != nil {
+	if _, err := worktree(t, s, domain.PhaseBase, testkit.FixtureBase).Run(t.Context(), nil); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 }
@@ -201,7 +201,7 @@ func TestSession_CloseRemovesEverythingItCreated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open the session: %v", err)
 	}
-	if _, err := s.Worktree(t.Context(), harness.PhaseBase, testkit.FixtureBase); err != nil {
+	if _, err := s.Worktree(t.Context(), domain.PhaseBase, testkit.FixtureBase); err != nil {
 		t.Fatalf("base worktree: %v", err)
 	}
 	if entries, _ := os.ReadDir(work); len(entries) != 1 {
@@ -363,7 +363,7 @@ func TestSession_EnvScriptExportsAheadOfTheOtherHooks(t *testing.T) {
 	s := f.open(t, false)
 	defer closeSession(t, t.Context(), s)
 
-	w, err := s.Worktree(t.Context(), harness.PhaseBase, testkit.FixtureBase)
+	w, err := s.Worktree(t.Context(), domain.PhaseBase, testkit.FixtureBase)
 	if err != nil {
 		t.Fatalf("base worktree: %v", err)
 	}

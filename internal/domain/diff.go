@@ -73,6 +73,27 @@ type FileChange struct {
 	AddedLines []AddedLine
 }
 
+// BasePath is the path the file had at the merge base, and whether it had one
+// at all. A status nobody expects in a two-tree diff counts as existing: every
+// ambiguity resolves toward the check, never away from it.
+func (f FileChange) BasePath() (string, bool) {
+	switch f.Status {
+	case FileAdded, FileCopied:
+		return "", false
+	case FileRenamed:
+		return f.OldPath, true
+	}
+	return f.Path, true
+}
+
+// HeadPath is the path the file has on head, and whether it is there at all.
+func (f FileChange) HeadPath() (string, bool) {
+	if f.Status == FileDeleted {
+		return "", false
+	}
+	return f.Path, true
+}
+
 // Diff is the change under judgement: merge-base to head.
 type Diff struct {
 	Base      string
@@ -86,6 +107,19 @@ type Stats struct {
 	Files   int `json:"files"`
 	Added   int `json:"added"`
 	Deleted int `json:"deleted"`
+}
+
+// TestSurface is every file of the diff that decides a test outcome, in diff
+// order. A rename counts under both of its paths: a test moved out of the
+// surface changes outcomes just as much as one moved into it.
+func (d Diff) TestSurface(cfg Config) []FileChange {
+	var files []FileChange
+	for _, f := range d.Files {
+		if cfg.IsTestSurface(f.Path) || (f.OldPath != "" && cfg.IsTestSurface(f.OldPath)) {
+			files = append(files, f)
+		}
+	}
+	return files
 }
 
 // Totals counts every file in the diff.
