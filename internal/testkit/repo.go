@@ -10,17 +10,26 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
-// fixedTime keeps commit hashes stable between runs, so a golden file may
-// carry one.
-const fixedTime = "2026-01-01T00:00:00+00:00"
+// firstCommitTime is where every fixture history starts. Fixed, so commit
+// hashes stay stable between runs and a golden file may carry one.
+const firstCommitTime = "2026-01-01T00:00:00+00:00"
+
+// commitInterval is how far apart two commits of a fixture land. A history that
+// happened at one instant spans zero days, and `redfirst audit` prints the span
+// it covered.
+const commitInterval = 24 * time.Hour
 
 // Repo is a git repository built for one test.
 type Repo struct {
 	t *testing.T
 	// Dir is the repository root.
 	Dir string
+	// commits counts what the fixture has committed so far, which dates the
+	// next one. Building the same fixture twice gives the same dates.
+	commits int
 }
 
 // NewRepo initialises an empty repository on branch main inside t.TempDir().
@@ -37,7 +46,7 @@ func (r *Repo) Git(args ...string) string {
 	r.t.Helper()
 
 	cmd := exec.Command("git", append([]string{"-C", r.Dir}, args...)...)
-	cmd.Env = gitEnv()
+	cmd.Env = gitEnv(r.commitTime())
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		r.t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
@@ -45,9 +54,18 @@ func (r *Repo) Git(args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// commitTime dates the commit the fixture is about to write.
+func (r *Repo) commitTime() string {
+	start, err := time.Parse(time.RFC3339, firstCommitTime)
+	if err != nil {
+		r.t.Fatalf("parse %s: %v", firstCommitTime, err)
+	}
+	return start.Add(time.Duration(r.commits) * commitInterval).Format(time.RFC3339)
+}
+
 // gitEnv shuts out the developer's own git configuration and fixes identity
 // and timestamps, so a fixture built here looks the same everywhere.
-func gitEnv() []string {
+func gitEnv(date string) []string {
 	return []string{
 		"PATH=" + os.Getenv("PATH"),
 		"GIT_CONFIG_GLOBAL=/dev/null",
@@ -56,8 +74,8 @@ func gitEnv() []string {
 		"GIT_AUTHOR_EMAIL=fixture@redfirst.test",
 		"GIT_COMMITTER_NAME=redfirst fixture",
 		"GIT_COMMITTER_EMAIL=fixture@redfirst.test",
-		"GIT_AUTHOR_DATE=" + fixedTime,
-		"GIT_COMMITTER_DATE=" + fixedTime,
+		"GIT_AUTHOR_DATE=" + date,
+		"GIT_COMMITTER_DATE=" + date,
 		"TZ=UTC",
 	}
 }
@@ -104,6 +122,18 @@ func (r *Repo) Commit(message string) string {
 
 	r.Git("add", "-A")
 	r.Git("commit", "--quiet", "--allow-empty", "-m", message)
+	r.commits++
+	return r.Head()
+}
+
+// Merge merges branch into the current one and keeps the merge commit even
+// where the history would fast-forward: a repository that merges this way makes
+// the merge commit the unit of its history.
+func (r *Repo) Merge(branch, message string) string {
+	r.t.Helper()
+
+	r.Git("merge", "--quiet", "--no-ff", "-m", message, branch)
+	r.commits++
 	return r.Head()
 }
 

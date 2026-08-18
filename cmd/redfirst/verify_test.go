@@ -273,7 +273,7 @@ func TestRun_UnknownCommandAlertsAHuman(t *testing.T) {
 
 	cases := map[string][]string{
 		"no command":      {},
-		"unknown command": {"audit"},
+		"unknown command": {"deploy"},
 	}
 	for name, args := range cases {
 		t.Run(name, func(t *testing.T) {

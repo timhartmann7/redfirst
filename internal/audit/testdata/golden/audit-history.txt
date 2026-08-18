@@ -1,0 +1,9 @@
+Audited 8 merged PRs on main (last 14 days)
+  unit=merge · a merge commit is one pull request
+
+  1  protected-paths
+  1  diff-budget
+  2  test-immutability
+  2  no-disabled-tests
+  1  suppression-scan
+  2  guarded-paths

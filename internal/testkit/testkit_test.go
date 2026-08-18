@@ -61,6 +61,54 @@ func TestRepo_RemoveDropsTheFileFromHead(t *testing.T) {
 	}
 }
 
+// TestRepo_MergeKeepsTheMergeCommit covers the fixture shape `redfirst audit`
+// reads as one unit of history: a merge commit with two parents, even where
+// the branch would have fast-forwarded.
+func TestRepo_MergeKeepsTheMergeCommit(t *testing.T) {
+	t.Parallel()
+
+	r := testkit.NewRepo(t)
+	r.Write("README.md", "# shop\n")
+	r.Commit("chore: seed the tree")
+
+	r.Branch("feature")
+	r.Write("src/total.js", "export const total = () => 0\n")
+	r.Commit("feat: add total")
+
+	subject := "Merge pull request #7 from shop/total"
+	r.Checkout("main")
+	merge := r.Merge("feature", subject)
+
+	parents := strings.Fields(r.Git("rev-list", "--parents", "-n", "1", merge))
+	if len(parents) != 3 {
+		t.Fatalf("merge commit has %d parents, want 2: %v", len(parents)-1, parents)
+	}
+	if got := r.Git("log", "--first-parent", "--format=%s", "-n", "1", "main"); got != subject {
+		t.Errorf("first-parent subject = %q, want %q", got, subject)
+	}
+}
+
+// TestRepo_CommitsSpanDays holds the property the audit header reports: a
+// fixture is a history rather than one instant, and it dates the same way on
+// every machine.
+func TestRepo_CommitsSpanDays(t *testing.T) {
+	t.Parallel()
+
+	r := testkit.NewRepo(t)
+	r.Write("README.md", "# shop\n")
+	r.Commit("chore: seed the tree")
+	r.Write("README.md", "# shop, the sequel\n")
+	r.Commit("docs: say more")
+
+	dates := strings.Fields(r.Git("log", "--format=%cd", "--date=format:%Y-%m-%d", "main"))
+	if len(dates) != 2 {
+		t.Fatalf("log printed %d dates, want 2: %v", len(dates), dates)
+	}
+	if dates[0] == dates[1] {
+		t.Errorf("both commits landed on %s; a fixture history has to span days", dates[0])
+	}
+}
+
 func TestFakeRunner_CountsItsOwnInvocations(t *testing.T) {
 	t.Parallel()
 
