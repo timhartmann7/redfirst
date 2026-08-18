@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/timhartmann7/redfirst/internal/domain"
 )
@@ -76,7 +77,12 @@ func (w *Worktree) Run(ctx context.Context, filter []string) (res domain.Run, er
 		return domain.Run{}, fmt.Errorf("%w: clear %s: %w", domain.ErrHarness, results, rmErr)
 	}
 
+	started := time.Now()
 	run, err := s.hooks.run(ctx, s.hooks.test, w.dir, w.env(results, filter))
+	// Timed around the hook alone. Reading what it wrote is the core's work,
+	// and billing it to the project would flatter exactly the number the third
+	// performance budget exists to keep honest.
+	took := time.Since(started)
 	if err != nil {
 		return domain.Run{}, err
 	}
@@ -84,7 +90,7 @@ func (w *Worktree) Run(ctx context.Context, filter []string) (res domain.Run, er
 	if err != nil {
 		return domain.Run{}, err
 	}
-	return domain.Run{Index: w.runs, Green: run.ok, Cases: cases}, nil
+	return domain.Run{Index: w.runs, Took: took, Green: run.ok, Cases: cases}, nil
 }
 
 // beforeRun readies the services for one more run: fresh mode brings them up

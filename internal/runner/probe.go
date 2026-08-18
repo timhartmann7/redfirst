@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/timhartmann7/redfirst/internal/domain"
 	"github.com/timhartmann7/redfirst/internal/harness"
@@ -48,11 +49,32 @@ type Probe struct {
 	head      cached
 	suiteRuns cached
 	baseSuite cached
+	// retried is what the reruns cost. They are not cached, so they have
+	// nowhere else to be counted.
+	retried time.Duration
 }
 
 // NewProbe builds the probe over a session that is already up.
 func NewProbe(session *harness.Session, source Source, diff domain.Diff, cfg domain.Config) *Probe {
 	return &Probe{session: session, source: source, diff: diff, cfg: cfg}
+}
+
+// Timings is what the run spent inside the project's own hooks, split the way
+// the report's timings block is. The core's own share of a tier 2 run is what
+// total_s has left over once these are subtracted, which is the third
+// performance budget from section 10 of the spec.
+//
+// The retry runs count as suite time: they are the suite gate rerunning its own
+// failures, and a project reading the report wants what the gate cost, not what
+// each of its attempts did.
+func (p *Probe) Timings() domain.Timings {
+	return domain.Timings{
+		EnvUpS:     p.session.EnvTime().Seconds(),
+		BaseProbeS: (p.inventory.runs.Took() + p.overlaid.runs.Took()).Seconds(),
+		HeadProbeS: p.head.runs.Took().Seconds(),
+		SuiteS:     (p.suiteRuns.runs.Took() + p.retried).Seconds(),
+		BaseSuiteS: p.baseSuite.runs.Took().Seconds(),
+	}
 }
 
 // cached memoises one probe, the error as much as the runs: a second gate
@@ -157,7 +179,9 @@ func (p *Probe) Retry(ctx context.Context, files []string) (domain.Runs, error) 
 	if err != nil {
 		return nil, err
 	}
-	return p.repeat(ctx, w, files, p.cfg.Suite.RetryFailed)
+	runs, err := p.repeat(ctx, w, files, p.cfg.Suite.RetryFailed)
+	p.retried += runs.Took()
+	return runs, err
 }
 
 // BaseSuite runs the whole suite on the merge base.

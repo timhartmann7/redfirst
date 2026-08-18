@@ -85,6 +85,11 @@
     }
   ],
   "timings": {
-    "total_s": 214
+    "total_s": 214,
+    "env_up_s": 48,
+    "base_probe_s": 61,
+    "head_probe_s": 58,
+    "suite_s": 44,
+    "base_suite_s": 0
   }
 }

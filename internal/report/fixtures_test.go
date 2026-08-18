@@ -120,7 +120,12 @@ func tier2Report() domain.Report {
 				Detail:  "empty catch block added",
 			},
 		},
-		Timings: domain.Timings{TotalS: 214},
+		// The numbers of the JSON sample in section 9 of the spec. The phases
+		// sum to 211 of the 214 seconds, and the three the core kept are what
+		// the third performance budget is about.
+		Timings: domain.Timings{
+			TotalS: 214, EnvUpS: 48, BaseProbeS: 61, HeadProbeS: 58, SuiteS: 44, BaseSuiteS: 0,
+		},
 	}
 }
 

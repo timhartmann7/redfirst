@@ -138,3 +138,53 @@ func TestVerify_TierTwoWritesNothingIntoTheRepositoryUnderJudgement(t *testing.T
 		t.Errorf("the run left a worktree registered:\n%s", got)
 	}
 }
+
+// TestVerify_TierTwoTimingsSplitTheHookTimeFromTheCore fills the block the
+// report schema has declared since the skeleton and nothing could produce until
+// tier 2 existed. The phases are what the project's own scripts cost; what
+// total_s has left over is the core, which is the third performance budget from
+// section 10 of the spec.
+func TestVerify_TierTwoTimingsSplitTheHookTimeFromTheCore(t *testing.T) {
+	t.Parallel()
+
+	rep := runReport(t, testkit.HookedFix(t).Dir)
+	got := rep.Timings
+
+	for _, phase := range []struct {
+		name  string
+		value float64
+	}{
+		{"env_up_s", got.EnvUpS},
+		{"base_probe_s", got.BaseProbeS},
+		{"head_probe_s", got.HeadProbeS},
+		{"suite_s", got.SuiteS},
+	} {
+		if phase.value <= 0 {
+			t.Errorf("%s = %v, want the time its hooks actually took", phase.name, phase.value)
+		}
+	}
+	// The suite was green on head, so the run never needed the expensive answer.
+	if got.BaseSuiteS != 0 {
+		t.Errorf("base_suite_s = %v, want 0: the suite on base runs on a rare path only", got.BaseSuiteS)
+	}
+
+	hooks := got.EnvUpS + got.BaseProbeS + got.HeadProbeS + got.SuiteS + got.BaseSuiteS
+	if hooks > got.TotalS {
+		t.Errorf("the hooks took %vs of a %vs run; the phases cannot outlast the whole", hooks, got.TotalS)
+	}
+}
+
+// TestVerify_TierOneReportsNoHookTime is the other end: nothing ran, so nothing
+// may be billed to a project that has no hooks.
+func TestVerify_TierOneReportsNoHookTime(t *testing.T) {
+	t.Parallel()
+
+	got := runReport(t, testkit.CleanFix(t).Dir).Timings
+
+	if got.EnvUpS+got.BaseProbeS+got.HeadProbeS+got.SuiteS+got.BaseSuiteS != 0 {
+		t.Errorf("timings = %+v, want every phase at zero without hooks", got)
+	}
+	if got.TotalS <= 0 {
+		t.Errorf("total_s = %v, want the wall clock of the run", got.TotalS)
+	}
+}

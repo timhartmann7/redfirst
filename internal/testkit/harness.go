@@ -1,6 +1,10 @@
 package testkit
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+	"time"
+)
 
 // The hooks below stand in for a project's .redfirst/ directory. They bring no
 // services up: what a fixture needs is a test runner whose answer depends on
@@ -34,6 +38,11 @@ type Hooks struct {
 	// that teardown does not take it. It is how a test sees the order of the
 	// phases and the number of runs inside one.
 	Log string
+	// Cost is what one run of test.sh is made to take. A real project spends
+	// that time installing dependencies, building and running its suite, and
+	// the benchmark that measures the core's share of a tier 2 run needs
+	// something to measure the share against.
+	Cost time.Duration
 }
 
 // WriteHooks puts the hook set into .redfirst/ of the current branch. The
@@ -51,8 +60,9 @@ func WriteHooks(r *Repo, h Hooks) {
 	if h.Nameless {
 		nameless = "1"
 	}
-	r.WriteScript(".redfirst/test.sh",
-		prelude+strings.Replace(fixtureRunner, "@NAMELESS@", nameless, 1))
+	runner := strings.Replace(fixtureRunner, "@NAMELESS@", nameless, 1)
+	runner = strings.Replace(runner, "@COST@", strconv.FormatFloat(h.Cost.Seconds(), 'f', -1, 64), 1)
+	r.WriteScript(".redfirst/test.sh", prelude+runner)
 }
 
 const hookPrelude = `#!/bin/sh
@@ -66,6 +76,9 @@ note() {
 `
 
 const fixtureRunner = `note "test ${REDFIRST_PHASE:-?} ${REDFIRST_PROBE_INDEX:-?}"
+
+cost=@COST@
+if [ "$cost" != 0 ]; then sleep "$cost"; fi
 
 results="${REDFIRST_RESULTS:-/dev/null}"
 index="${REDFIRST_PROBE_INDEX:-1}"

@@ -43,8 +43,23 @@ type Warning struct {
 
 // Timings are the only part of the report that changes between two runs on the
 // same input.
+//
+// The four phase fields are the time spent inside the project's own hooks, not
+// the wall clock of the run: what they exist for is the third performance
+// budget, where the core's share is total_s minus the rest. They stay zero
+// where no environment came up, which is every tier 1 run.
 type Timings struct {
 	TotalS float64 `json:"total_s"`
+	// EnvUpS is env-up.sh, env-reset.sh and env-down.sh together. Fresh mode
+	// pays it around every run and reused mode once, which is the difference
+	// the two modes exist to make.
+	EnvUpS float64 `json:"env_up_s"`
+	// BaseProbeS covers the inventory run as well as the probes: both run on
+	// the base working copy, and the cost model counts them together.
+	BaseProbeS float64 `json:"base_probe_s"`
+	HeadProbeS float64 `json:"head_probe_s"`
+	SuiteS     float64 `json:"suite_s"`
+	BaseSuiteS float64 `json:"base_suite_s"`
 }
 
 // Report is the contract with the orchestrator.

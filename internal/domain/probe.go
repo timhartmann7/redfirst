@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"slices"
+	"time"
 )
 
 // Phase is one half of red-green, plus the suite run. The source tree differs
@@ -46,6 +47,9 @@ type Case struct {
 type Run struct {
 	// Index is the run's number inside its phase, starting at one.
 	Index int
+	// Took is how long the hook process ran. It is what the report's timings
+	// block is built from, and what the core's own share is measured against.
+	Took time.Duration
 	// Green is the hook having exited zero. What green means is the hook's call.
 	Green bool
 	// Cases is what the results file named. It stays empty where the harness
@@ -72,6 +76,15 @@ func (r Run) Failed() []Case {
 
 // Runs is what one probe produced: one entry per execution of the hook.
 type Runs []Run
+
+// Took is how long the whole probe spent inside hook processes.
+func (r Runs) Took() time.Duration {
+	var total time.Duration
+	for _, run := range r {
+		total += run.Took
+	}
+	return total
+}
 
 // Named reports whether any run named a case. Without names red-green cannot
 // tell a case the diff added from one both versions of the file already held.

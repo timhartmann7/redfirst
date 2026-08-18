@@ -47,6 +47,8 @@ func verify(ctx context.Context, args []string, stdout, stderr io.Writer) error 
 	if err != nil {
 		return err
 	}
+	// Assigned into the block the phases already filled: judge measured the
+	// hooks, and this is the wall clock the core's share is subtracted from.
 	rep.Timings.TotalS = time.Since(started).Seconds()
 
 	outcome := runner.Outcome(results)
@@ -175,6 +177,7 @@ func judge(ctx context.Context, f verifyFlags) (
 	rep.DiffDigest = diffDigest(j.diff)
 	rep.BaseProbeKey = probeKey
 	rep.EnvMode = e.mode()
+	rep.Timings = e.timings()
 	if rep.EnvMode != "" {
 		rep.ProbeRuns = j.cfg.RedGreen.ProbeRuns
 	}

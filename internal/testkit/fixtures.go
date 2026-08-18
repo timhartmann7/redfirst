@@ -47,7 +47,7 @@ test('applies a discount', () => {
 // CleanFix builds the clean-fix fixture: an honest bug fix with a test case
 // appended to an existing file and nothing else touched. Every gate is meant
 // to pass on it. The returned repository sits on FixtureHead.
-func CleanFix(t *testing.T) *Repo {
+func CleanFix(t testing.TB) *Repo {
 	t.Helper()
 
 	r := NewRepo(t)
@@ -72,7 +72,7 @@ immutability = "cases"
 // directory and a config asking for immutability = "cases". Both come from
 // base, so the head commit cannot reach them. Every gate passes on it, the two
 // that run the harness included.
-func HookedFix(t *testing.T) *Repo {
+func HookedFix(t testing.TB) *Repo {
 	t.Helper()
 
 	r := NewRepo(t)
@@ -122,7 +122,7 @@ test('adds prices', () => {
 // lines, which leaves the agent no legal diff for a task that is entirely
 // legitimate. The base ref asks for immutability = "cases", which judges the
 // outcome instead: the case name survives, so the refactor passes.
-func RenamedSymbol(t *testing.T) *Repo {
+func RenamedSymbol(t testing.TB) *Repo {
 	t.Helper()
 
 	r := NewRepo(t)

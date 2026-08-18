@@ -20,6 +20,7 @@ type env struct {
 	diff    domain.Diff
 	cfg     domain.Config
 	session *harness.Session
+	probe   *runner.Probe
 }
 
 func (e *env) open(ctx context.Context) (domain.Probe, error) {
@@ -28,7 +29,17 @@ func (e *env) open(ctx context.Context) (domain.Probe, error) {
 		return nil, err
 	}
 	e.session = s
-	return runner.NewProbe(s, e.source, e.diff, e.cfg), nil
+	e.probe = runner.NewProbe(s, e.source, e.diff, e.cfg)
+	return e.probe, nil
+}
+
+// timings is what the run spent inside the project's hooks, and zero where no
+// environment came up. The core's own share is what total_s has left over.
+func (e *env) timings() domain.Timings {
+	if e.probe == nil {
+		return domain.Timings{}
+	}
+	return e.probe.Timings()
 }
 
 func (e *env) close(ctx context.Context) error {

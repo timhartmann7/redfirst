@@ -24,7 +24,7 @@ const commitInterval = 24 * time.Hour
 
 // Repo is a git repository built for one test.
 type Repo struct {
-	t *testing.T
+	t testing.TB
 	// Dir is the repository root.
 	Dir string
 	// commits counts what the fixture has committed so far, which dates the
@@ -33,7 +33,7 @@ type Repo struct {
 }
 
 // NewRepo initialises an empty repository on branch main inside t.TempDir().
-func NewRepo(t *testing.T) *Repo {
+func NewRepo(t testing.TB) *Repo {
 	t.Helper()
 
 	r := &Repo{t: t, Dir: t.TempDir()}
