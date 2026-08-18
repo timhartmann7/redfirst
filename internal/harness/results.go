@@ -16,27 +16,6 @@ import (
 	"github.com/timhartmann7/redfirst/internal/domain"
 )
 
-// Outcome is what a results file says about one case.
-type Outcome string
-
-const (
-	OutcomePass Outcome = "pass"
-	OutcomeFail Outcome = "fail"
-	OutcomeSkip Outcome = "skip"
-)
-
-// Case is one named test result.
-//
-// The name is the unit red-green judges by. A file granularity leaves the
-// channel open that the gate exists to close: an added case at the end of an
-// existing test file, with no new file anywhere in the diff.
-type Case struct {
-	// File is the JUnit classname. TAP names no file and leaves it empty.
-	File    string
-	Name    string
-	Outcome Outcome
-}
-
 // tapLineLimit caps one line of a TAP stream. A description never comes close.
 const tapLineLimit = 1 << 20
 
@@ -50,7 +29,7 @@ const tapLineLimit = 1 << 20
 // per-case names, so content in a third format reads as no cases rather than as
 // a failure. A file that opens as xml is different: it claims to be results,
 // and half of one means the runner died mid-write, which is a broken harness.
-func readResults(path string) ([]Case, error) {
+func readResults(path string) ([]domain.Case, error) {
 	f, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
@@ -110,10 +89,10 @@ type junitCase struct {
 
 // parseJUnit walks the tokens rather than decoding a root element, so a file
 // rooted at <testsuites> and one rooted at a bare <testsuite> read the same.
-func parseJUnit(r io.Reader) ([]Case, error) {
+func parseJUnit(r io.Reader) ([]domain.Case, error) {
 	dec := xml.NewDecoder(r)
 
-	var cases []Case
+	var cases []domain.Case
 	for {
 		tok, err := dec.Token()
 		if errors.Is(err, io.EOF) {
@@ -133,28 +112,28 @@ func parseJUnit(r io.Reader) ([]Case, error) {
 			return nil, fmt.Errorf("%w: test.sh wrote a testcase we cannot read: %w",
 				domain.ErrHarness, err)
 		}
-		cases = append(cases, Case{File: c.Classname, Name: c.Name, Outcome: c.outcome()})
+		cases = append(cases, domain.Case{File: c.Classname, Name: c.Name, Outcome: c.outcome()})
 	}
 }
 
-func (c junitCase) outcome() Outcome {
+func (c junitCase) outcome() domain.CaseOutcome {
 	switch {
 	case c.Failure != nil || c.Error != nil:
-		return OutcomeFail
+		return domain.CaseFail
 	case c.Skipped != nil:
-		return OutcomeSkip
+		return domain.CaseSkip
 	}
-	return OutcomePass
+	return domain.CasePass
 }
 
 // parseTAP reads the `ok 1 - description` grammar. Only lines that open at the
 // left margin count: an indented block is a subtest, and its cases already
 // arrive again as the result of the test that owns them.
-func parseTAP(r io.Reader) ([]Case, error) {
+func parseTAP(r io.Reader) ([]domain.Case, error) {
 	s := bufio.NewScanner(r)
 	s.Buffer(nil, tapLineLimit)
 
-	var cases []Case
+	var cases []domain.Case
 	for s.Scan() {
 		if c, ok := parseTAPLine(s.Text()); ok {
 			cases = append(cases, c)
@@ -166,26 +145,26 @@ func parseTAP(r io.Reader) ([]Case, error) {
 	return cases, nil
 }
 
-func parseTAPLine(line string) (Case, bool) {
-	rest, outcome := "", OutcomePass
+func parseTAPLine(line string) (domain.Case, bool) {
+	rest, outcome := "", domain.CasePass
 	switch {
 	case strings.HasPrefix(line, "not ok"):
-		rest, outcome = line[len("not ok"):], OutcomeFail
+		rest, outcome = line[len("not ok"):], domain.CaseFail
 	case strings.HasPrefix(line, "ok"):
 		rest = line[len("ok"):]
 	default:
-		return Case{}, false
+		return domain.Case{}, false
 	}
 	// The word has to end there: "okay, moving on" is somebody's comment.
 	if rest != "" && !unicode.IsSpace(rune(rest[0])) {
-		return Case{}, false
+		return domain.Case{}, false
 	}
 
 	name, directive := splitTAPDirective(strings.TrimSpace(rest))
 	if strings.EqualFold(directive, "skip") {
-		outcome = OutcomeSkip
+		outcome = domain.CaseSkip
 	}
-	return Case{Name: tapName(name), Outcome: outcome}, true
+	return domain.Case{Name: tapName(name), Outcome: outcome}, true
 }
 
 // splitTAPDirective cuts the trailing `# SKIP why` off a description and

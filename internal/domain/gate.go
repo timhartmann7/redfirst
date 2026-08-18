@@ -99,4 +99,8 @@ type GateResult struct {
 type Input struct {
 	Diff   Diff
 	Config Config
+	// Probe is the project's own harness, brought up once and shared. It is nil
+	// for a run without hooks, which the runner already turned into an
+	// unavailable line before any gate that reads it could start.
+	Probe Probe
 }

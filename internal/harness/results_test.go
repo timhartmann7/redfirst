@@ -22,7 +22,7 @@ func resultsFile(t *testing.T, content string) string {
 	return path
 }
 
-func read(t *testing.T, content string) []harness.Case {
+func read(t *testing.T, content string) []domain.Case {
 	t.Helper()
 
 	cases, err := harness.ReadResults(resultsFile(t, content))
@@ -47,11 +47,11 @@ func TestResults_JUnitReadsEveryOutcomeUnderEitherRoot(t *testing.T) {
 	  <testcase classname="src/total.test.js" name="reaches the api"><error message="no route"/></testcase>
 	  <testcase classname="src/total.test.js" name="rounds"><skipped/></testcase>`
 
-	want := []harness.Case{
-		{File: "src/total.test.js", Name: "adds prices", Outcome: harness.OutcomePass},
-		{File: "src/total.test.js", Name: "applies a discount", Outcome: harness.OutcomeFail},
-		{File: "src/total.test.js", Name: "reaches the api", Outcome: harness.OutcomeFail},
-		{File: "src/total.test.js", Name: "rounds", Outcome: harness.OutcomeSkip},
+	want := []domain.Case{
+		{File: "src/total.test.js", Name: "adds prices", Outcome: domain.CasePass},
+		{File: "src/total.test.js", Name: "applies a discount", Outcome: domain.CaseFail},
+		{File: "src/total.test.js", Name: "reaches the api", Outcome: domain.CaseFail},
+		{File: "src/total.test.js", Name: "rounds", Outcome: domain.CaseSkip},
 	}
 	for root, shape := range roots {
 		t.Run(root, func(t *testing.T) {
@@ -75,7 +75,7 @@ func TestResults_JUnitWithoutNamesLeavesTheCasesUnnamed(t *testing.T) {
 	if len(got) != 0 {
 		t.Fatalf("cases = %v, want none", got)
 	}
-	res := harness.Result{Cases: got}
+	res := domain.Run{Cases: got}
 	if res.Named() {
 		t.Error("a results file that names nothing must not report per-case names")
 	}
@@ -95,12 +95,12 @@ not ok 5 - reaches the api # TODO the route is missing
     ok 1 - a subtest of the case above
 `)
 
-	want := []harness.Case{
-		{Name: "adds prices", Outcome: harness.OutcomePass},
-		{Name: "applies a discount", Outcome: harness.OutcomeFail},
-		{Name: "rounds the total", Outcome: harness.OutcomePass},
-		{Name: "", Outcome: harness.OutcomeSkip},
-		{Name: "reaches the api", Outcome: harness.OutcomeFail},
+	want := []domain.Case{
+		{Name: "adds prices", Outcome: domain.CasePass},
+		{Name: "applies a discount", Outcome: domain.CaseFail},
+		{Name: "rounds the total", Outcome: domain.CasePass},
+		{Name: "", Outcome: domain.CaseSkip},
+		{Name: "reaches the api", Outcome: domain.CaseFail},
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("cases = %v\nwant %v", got, want)
