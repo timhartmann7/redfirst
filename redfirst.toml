@@ -1,0 +1,51 @@
+# The rules redfirst judges this repository by.
+#
+# redfirst reads this file from the base branch, so an edit on a branch under
+# judgement changes nothing about how that branch is judged. The path sits in
+# paths.protected below, which makes such an edit a refusal rather than a quiet
+# rule change.
+#
+# A key set here replaces its default whole; a key left out keeps the built-in
+# one. Sections are not the unit of replacement, and lists never merge.
+# `redfirst explain` prints what came out. docs/CONFIG.md documents every key.
+version = 1
+
+[paths]
+# Blocking. These files decide how the next diff is judged, and the spec is on
+# the list for the same reason CLAUDE.md is: it is what the next agent working
+# here implements. Changing any of them is a human's move, and the refusal is
+# what makes it one.
+protected = [
+  ".redfirst/**",
+  "redfirst.toml",
+  ".github/workflows/redfirst.yml",
+  "docs/redfirst-spec.md",
+  "CLAUDE.md",
+  "AGENTS.md",
+  ".mcp.json",
+  ".claude/**",
+  ".cursor/**",
+]
+# Under observation: these reach the report and leave the verdict alone. They
+# decide what `make check` accepts and what a release publishes, which is worth
+# a reviewer's eye without being worth a block: the numbers in the Makefile move
+# with the linters, and go.sum moves with every dependency bump.
+guarded = [
+  ".github/**",
+  "Makefile",
+  ".golangci.yml",
+  "action.yml",
+  "schema/**",
+  "go.mod",
+  "go.sum",
+]
+
+[tests]
+# cases rather than the built-in append-only. This repository renames the
+# symbols its tests cover, and append-only refuses every diff that does, because
+# the old name has to leave the test file. cases judges outcomes instead: no
+# case that existed on base may disappear or go red on head.
+#
+# The mode needs hooks and per-case names. .redfirst/ carries both, and
+# `redfirst doctor` says so before a pull request depends on it.
+immutability = "cases"

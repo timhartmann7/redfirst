@@ -1,0 +1,66 @@
+# redfirst judging its own pull requests, under its own rules, blocking.
+#
+# This file decides what judges the repository, so treat it as a rule rather
+# than a script: it sits in paths.protected, and every change to it goes past a
+# human. redfirst reads redfirst.toml and .redfirst/ from the base branch for
+# the same reason.
+#
+# It differs from what `redfirst init --ci` generates in one respect, and only
+# this repository has the excuse: the binary is built from the base branch
+# instead of downloaded from a release. A repository that installs redfirst
+# pins a version and a checksum, because the release is the artifact it trusts.
+# Here the sources on base are that artifact, and judging a pull request with
+# the release from last month would mean the tool never meets its own newest
+# rules.
+#
+# What stays the same is the part that carries the thesis: the rules, the hooks
+# and the binary all come from base. Two things do come off the branch, and
+# neither can buy it a pass: this file, because that is how GitHub runs a
+# pull_request workflow, and the Go version in go.mod, which decides the
+# toolchain the judge is built with. paths.protected and branch protection are
+# what answer for the first; the second can break the build and never soften a
+# verdict.
+name: redfirst
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The diff runs from the merge base, so the history both refs share
+          # has to be in the clone.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      # .redfirst/test.sh reports one case per test through gotestsum, which is
+      # what lets red-green tell a case the diff added from one that was always
+      # there. Without it the hook exits before running anything, and that is
+      # exit code 2 rather than a red suite.
+      - name: Install gotestsum
+        run: |
+          set -eu
+          go install gotest.tools/gotestsum@v1.13.0
+          # env-up.sh looks for it on PATH, so say where it landed rather than
+          # trusting the setup action to have said it.
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Judge our own diff
+        env:
+          # The branch name reaches the shell through the environment rather
+          # than through an expression: `run:` would execute it.
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -eu
+          git worktree add "$RUNNER_TEMP/base" "origin/$BASE_REF"
+          (cd "$RUNNER_TEMP/base" && go build -o "$RUNNER_TEMP/redfirst" ./cmd/redfirst)
+          "$RUNNER_TEMP/redfirst" verify --repo . --base "origin/$BASE_REF" --head HEAD
