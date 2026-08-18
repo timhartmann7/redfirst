@@ -7,6 +7,9 @@
 # judged. Keep .redfirst/** in paths.protected and let a human review every
 # change to it.
 set -u
+# No set -e: this hook runs on the panic path and on the deadline, when half
+# the environment was never built, and stopping at the first command that finds
+# nothing to stop would leak the rest. A non-zero exit here is exit code 2.
 
 # --volumes: the data of this run leaves with it. The volume name carries the
 # run id through COMPOSE_PROJECT_NAME, so this stops nobody else's database.

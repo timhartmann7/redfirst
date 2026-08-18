@@ -98,11 +98,14 @@ func header(p Preset, name string) string {
 		// hook, and the run would take that for a hook that passed.
 		return head
 	case hookDown:
-		// No `set -e` either, and for the opposite reason. Teardown runs on the
-		// panic path and on the deadline, when half the environment was never
-		// built, and stopping at the first command that finds nothing to stop
-		// would leak the rest. A non-zero exit here is exit code 2.
-		return head + "set -u\n"
+		// No set -e either, and for the opposite reason. The generated file
+		// carries the why: a reader who does not find it there restores the
+		// flag, and the teardown starts leaking services again.
+		return head + `set -u
+# No set -e: this hook runs on the panic path and on the deadline, when half
+# the environment was never built, and stopping at the first command that finds
+# nothing to stop would leak the rest. A non-zero exit here is exit code 2.
+`
 	}
 	return head + "set -eu\n"
 }
@@ -147,7 +150,7 @@ func hookSets() map[Preset][]hookFile {
 // noServicesDown is the teardown of a project with nothing to tear down. The
 // file still has to exist and still has to exit 0.
 const noServicesDown = `
-# Nothing was brought up, so there is nothing to stop.
+# Nothing was brought up here, so there is nothing to stop.
 exit 0
 `
 
@@ -373,6 +376,7 @@ const blankTest = `
 # directory. $REDFIRST_PHASE is base, head or suite.
 #
 # Exit 0 when the tests pass, non-zero when they do not.
+#
 # Committed as it stands, this refuses every diff: the suite comes back red and
 # suite-green charges it to whoever opened the pull request. A repository not
 # ready for tier 2 is better off with no ` + harness.HooksDir + `/ at all, which leaves
@@ -382,7 +386,6 @@ exit 1
 `
 
 const blankDown = `
-# Stop everything env-up.sh started. This runs on the panic and the deadline
-# paths too, so it has to work against a half-built environment.
+# Stop everything env-up.sh started.
 exit 0
 `

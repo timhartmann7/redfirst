@@ -7,8 +7,11 @@
 # judged. Keep .redfirst/** in paths.protected and let a human review every
 # change to it.
 set -u
+# No set -e: this hook runs on the panic path and on the deadline, when half
+# the environment was never built, and stopping at the first command that finds
+# nothing to stop would leak the rest. A non-zero exit here is exit code 2.
 
-# Nothing was brought up, so there is nothing to stop.
+# Nothing was brought up here, so there is nothing to stop.
 exit 0
 --- .redfirst/env-up.sh ---
 #!/bin/sh
