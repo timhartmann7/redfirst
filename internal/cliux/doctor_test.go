@@ -265,6 +265,41 @@ func TestDoctor_HooksOnBaseAreTierTwo(t *testing.T) {
 	rejects(t, got, "To reach tier")
 }
 
+// TestDoctor_HooksWithoutAWorkflowAreNotTierTwo holds the tier table of
+// section 4: the tiers stack, and tier 2 is the workflow plus the scripts.
+// Hooks nobody runs prove nothing about a pull request, however good they are.
+func TestDoctor_HooksWithoutAWorkflowAreNotTierTwo(t *testing.T) {
+	t.Parallel()
+
+	got := doctorFixture{
+		tests: []string{"src/total.test.js", "lib/discount.test.js"},
+		hook:  "test-honest.sh",
+	}.diagnose(t, noHooks)
+
+	wants(t, got,
+		"tier=0",
+		"base:"+harness.HooksDir+"/ → red-green and suite-green run",
+		"To reach tier 1:",
+		"redfirst init --ci",
+	)
+}
+
+// TestDoctor_FilesAlreadyWrittenNeedCommittingRatherThanGenerating keeps the
+// next step from being a command that refuses: `init` never writes over a file
+// somebody already has.
+func TestDoctor_FilesAlreadyWrittenNeedCommittingRatherThanGenerating(t *testing.T) {
+	t.Parallel()
+
+	got := doctorFixture{
+		tests:       []string{"src/total.test.js"},
+		workflow:    true,
+		uncommitted: map[string]string{harness.HooksDir + "/test.sh": "#!/bin/sh\n"},
+	}.diagnose(t)
+
+	wants(t, got, "To reach tier 2:", "commit "+harness.HooksDir+"/ and merge it into "+testkit.FixtureBase)
+	rejects(t, got, "redfirst init --hooks")
+}
+
 // TestDoctor_ConfigRowNamesWhereTheRulesCameFrom keeps the answer to "which
 // rules judged me" in one place: config.Load decides it, doctor prints it.
 func TestDoctor_ConfigRowNamesWhereTheRulesCameFrom(t *testing.T) {
@@ -284,8 +319,9 @@ func TestDoctor_NoHooksAnswersFromTheRepositoryAlone(t *testing.T) {
 	t.Parallel()
 
 	got := doctorFixture{
-		tests: []string{"src/total.test.js", "lib/discount.test.js"},
-		hook:  "test-honest.sh",
+		tests:    []string{"src/total.test.js", "lib/discount.test.js"},
+		workflow: true,
+		hook:     "test-honest.sh",
 	}.diagnose(t, noHooks)
 
 	wants(t, got, "tier=2", "not probed · --no-hooks")

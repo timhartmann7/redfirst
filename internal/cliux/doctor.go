@@ -89,7 +89,7 @@ func (d Doctor) Report(ctx context.Context, w io.Writer) error {
 	var b strings.Builder
 	fmt.Fprintf(&b, "redfirst v%s · doctor · tier=%d\n\n", domain.Version, tier(hooks, workflow))
 	writeRows(&b, indent(rows))
-	writeNextTier(&b, tier(hooks, workflow), markers)
+	d.writeNextTier(&b, hooks, workflow, markers)
 
 	if _, err := io.WriteString(w, b.String()); err != nil {
 		return fmt.Errorf("write the diagnosis: %w", err)
@@ -170,32 +170,57 @@ func (d Doctor) workflowRow(found where) string {
 }
 
 // tier is the adoption state from section 4 of the spec: no files, one
-// workflow, or the workflow plus the hooks.
+// workflow, or the workflow plus the hooks. The tiers stack, so a repository
+// that wrote its hooks and never added the workflow sits at tier 0: nothing
+// judges a pull request there, whatever the hooks would have proved.
 func tier(hooks, workflow where) int {
 	switch {
+	case workflow != onBase:
+		return 0
 	case hooks == onBase:
 		return 2
-	case workflow == onBase:
-		return 1
 	}
-	return 0
+	return 1
 }
 
 // writeNextTier prints the specific command that moves the repository up one
 // step. Tier 2 is the top, and a diagnosis that ended in advice for a tier
 // somebody already reached would read as though it had found nothing.
-func writeNextTier(b *strings.Builder, current int, markers Markers) {
-	switch current {
-	case 0:
-		b.WriteString("\n  To reach tier 1:\n    redfirst init --ci\n")
-	case 1:
-		preset, err := markers.Preset()
-		if err != nil {
-			fmt.Fprintf(b, "\n  To reach tier 2:\n    redfirst init --hooks <preset>\n    %s\n", err)
-			return
-		}
-		fmt.Fprintf(b, "\n  To reach tier 2:\n    redfirst init --hooks %s\n", preset)
+//
+// A file that is already in the working tree needs committing rather than
+// generating: `init` refuses to write over one, so naming it here would send
+// somebody to a refusal.
+func (d Doctor) writeNextTier(b *strings.Builder, hooks, workflow where, markers Markers) {
+	if workflow != onBase {
+		fmt.Fprintf(b, "\n  To reach tier 1:\n    %s\n", d.step(workflow, "redfirst init --ci", WorkflowPath))
+		return
 	}
+	if hooks == onBase {
+		return
+	}
+	if hooks == inWorkTree {
+		fmt.Fprintf(b, "\n  To reach tier 2:\n    %s\n", d.commit(harness.HooksDir+"/"))
+		return
+	}
+	preset, err := markers.Preset()
+	if err != nil {
+		fmt.Fprintf(b, "\n  To reach tier 2:\n    redfirst init --hooks <preset>\n    %s\n", err)
+		return
+	}
+	fmt.Fprintf(b, "\n  To reach tier 2:\n    redfirst init --hooks %s\n", preset)
+}
+
+// step is the generator's command, or the commit that a file already written
+// needs instead.
+func (d Doctor) step(found where, generate, path string) string {
+	if found == inWorkTree {
+		return d.commit(path)
+	}
+	return generate
+}
+
+func (d Doctor) commit(path string) string {
+	return fmt.Sprintf("commit %s and merge it into %s", path, d.BaseRef)
 }
 
 // indent puts the two spaces of the sample output in section 5 of the spec in

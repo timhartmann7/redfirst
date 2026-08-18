@@ -163,6 +163,9 @@ func TestInit_GeneratedHooksReachTierTwoAndDoctorReadsThem(t *testing.T) {
 
 	repo := testkit.CleanFix(t)
 	repo.Checkout(testkit.FixtureBase)
+	// Tier 2 is the workflow plus the scripts, so the repository needs the one
+	// this build cannot generate: `init --ci` refuses a release it cannot pin.
+	repo.Write(".github/workflows/redfirst.yml", "name: redfirst\n")
 
 	var out bytes.Buffer
 	args := []string{"init", "--hooks", "blank", "--repo", repo.Dir}

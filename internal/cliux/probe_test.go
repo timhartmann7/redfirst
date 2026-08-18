@@ -84,11 +84,11 @@ func TestDoctor_AHookThatWritesNoResultsIsNamedApart(t *testing.T) {
 	rejects(t, got, "unnamed")
 }
 
-// TestDoctor_ReplayedRerunsCollapseTheProbesAndAreNamed is the check section 7
+// TestDoctor_ARerunThatDidNoWorkIsNamedWithWhatItCosts is the check section 7
 // of the spec puts on doctor: a runner handing back its previous verdict turns
 // probe_runs into one run, and the K-of-K rule is what stands between a flaky
 // test and a green verdict.
-func TestDoctor_ReplayedRerunsCollapseTheProbesAndAreNamed(t *testing.T) {
+func TestDoctor_ARerunThatDidNoWorkIsNamedWithWhatItCosts(t *testing.T) {
 	t.Parallel()
 
 	got := doctorFixture{
@@ -98,23 +98,23 @@ func TestDoctor_ReplayedRerunsCollapseTheProbesAndAreNamed(t *testing.T) {
 	}.diagnose(t)
 
 	wants(t, got,
-		"replayed ·",
-		"the 3 red-green probes collapse into one",
+		"unexplained gap ·",
+		"collapses the 3 red-green probes into one",
 		"go test -count=1",
 	)
 }
 
-// TestDoctor_AHookThatStagesItsFirstRunIsNotAccusedOfReplaying is the other
+// TestDoctor_AHookThatStagesItsFirstRunIsNotAccusedOfAnything is the other
 // side of the same measurement. The spec's own example installs dependencies on
 // $REDFIRST_PROBE_INDEX 1, so the gap between the two runs has an innocent
 // reading and doctor may not pick the guilty one.
-func TestDoctor_AHookThatStagesItsFirstRunIsNotAccusedOfReplaying(t *testing.T) {
+func TestDoctor_AHookThatStagesItsFirstRunIsNotAccusedOfAnything(t *testing.T) {
 	t.Parallel()
 
 	got := doctorFixture{tests: twoDirs, hook: "test-staged.sh"}.diagnose(t)
 
 	wants(t, got, "cannot tell ·", "branches on $REDFIRST_PROBE_INDEX")
-	rejects(t, got, "replayed")
+	rejects(t, got, "unexplained gap")
 }
 
 // TestDoctor_TwoRunsThatBothCostTimeAreReportedFresh is the healthy case of the
@@ -125,7 +125,7 @@ func TestDoctor_TwoRunsThatBothCostTimeAreReportedFresh(t *testing.T) {
 	got := doctorFixture{tests: twoDirs, hook: "test-steady.sh"}.diagnose(t)
 
 	wants(t, got, "fresh · run 1 took")
-	rejects(t, got, "replayed")
+	rejects(t, got, "unexplained gap")
 }
 
 // TestDoctor_ReusedServicesFlagMigrationsOutsideProtectedPaths covers section 13
@@ -181,7 +181,9 @@ func TestDoctor_FreshModeIsNamedWithTheFileThatWouldChangeIt(t *testing.T) {
 func TestDoctor_ABrokenEnvUpIsAFindingRatherThanACrash(t *testing.T) {
 	t.Parallel()
 
-	got := doctorFixture{tests: twoDirs, hook: "test-honest.sh", up: "env-up-broken.sh"}.diagnose(t)
+	got := doctorFixture{
+		tests: twoDirs, workflow: true, hook: "test-honest.sh", up: "env-up-broken.sh",
+	}.diagnose(t)
 
 	wants(t, got, "tier=2", "env-up.sh", "the database refused the connection")
 }
