@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"io"
 	"time"
 
 	"github.com/timhartmann7/redfirst/internal/cliux"
 	"github.com/timhartmann7/redfirst/internal/config"
+	"github.com/timhartmann7/redfirst/internal/domain"
 	"github.com/timhartmann7/redfirst/internal/gitx"
 )
 
@@ -46,8 +48,16 @@ func diagnose(ctx context.Context, args []string, stdout, stderr io.Writer) erro
 		return err
 	}
 	cfg, source, err := config.Load(ctx, repo, base, configPath)
-	if err != nil {
+	// A config verify would refuse is the answer somebody came for rather than
+	// a reason to stop. The rest of the diagnosis runs against the built-in
+	// defaults, which is what the repository would be judged by without the
+	// file, and the config row says what the file did wrong.
+	configErr := err
+	if err != nil && !errors.Is(err, domain.ErrConfig) {
 		return err
+	}
+	if configErr != nil {
+		cfg, source = config.Defaults(), config.SourceDefaults
 	}
 
 	return cliux.Doctor{
@@ -56,6 +66,7 @@ func diagnose(ctx context.Context, args []string, stdout, stderr io.Writer) erro
 		BaseSHA:      base,
 		Config:       cfg,
 		ConfigSource: source,
+		ConfigError:  configErr,
 		NoHooks:      f.noHooks,
 		WorkDir:      f.workDir,
 	}.Report(ctx, stdout)

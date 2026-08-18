@@ -129,6 +129,31 @@ func TestDoctor_NoHooksAnswersWithoutRunningAnything(t *testing.T) {
 	}
 }
 
+// TestDoctor_ABrokenConfigIsDiagnosedRatherThanRefused covers the likeliest
+// reason somebody runs this command at all. verify answers a config it cannot
+// read with exit code 3 and one line; doctor has to say which key broke it and
+// still report where the repository stands.
+func TestDoctor_ABrokenConfigIsDiagnosedRatherThanRefused(t *testing.T) {
+	t.Parallel()
+
+	repo := onBase(t, testkit.CleanFix(t), "chore: add a config with a typo", func(r *testkit.Repo) {
+		r.Write(configPath, "version = 1\n\n[paths]\nprotected_paths = [\"CLAUDE.md\"]\n")
+	})
+
+	got := runDoctor(t, repo.Dir)
+
+	for _, want := range []string{
+		configPath + " on " + testkit.FixtureBase + " is invalid",
+		"exit code 3",
+		"protected_paths",
+		"To reach tier",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the diagnosis does not carry %q:\n%s", want, got)
+		}
+	}
+}
+
 // TestInit_GeneratedHooksReachTierTwoAndDoctorReadsThem is the seam between the
 // two halves of the slice: `init --hooks` writes the scripts, the harness
 // executes them, and doctor reports what they did. The blank preset refuses on

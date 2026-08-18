@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/timhartmann7/redfirst/internal/config"
 	"github.com/timhartmann7/redfirst/internal/domain"
 	"github.com/timhartmann7/redfirst/internal/harness"
 )
@@ -43,6 +44,12 @@ type Doctor struct {
 	Config  domain.Config
 	// ConfigSource is what config.Load reported: "defaults" or "base:<path>".
 	ConfigSource string
+	// ConfigError is what config.Load refused, and nil where it accepted the
+	// file. A config verify would answer with exit code 3 is the likeliest
+	// reason somebody runs this command, so doctor names it and carries on
+	// against the built-in defaults rather than stopping on the one line verify
+	// already prints.
+	ConfigError error
 	// NoHooks keeps the environment down, the way --no-hooks does for verify.
 	NoHooks bool
 	WorkDir string
@@ -119,7 +126,11 @@ func (d Doctor) locate(ctx context.Context, path string) (where, error) {
 // locateConfig names the file the rules came from. config.Load has already
 // decided that, and repeating the decision here would let the two disagree.
 func (d Doctor) locateConfig(ctx context.Context) (string, error) {
-	if d.ConfigSource != "defaults" {
+	if d.ConfigError != nil {
+		return fmt.Sprintf("%s on %s is invalid, and verify answers it with exit code 3: %v",
+			ConfigPath, d.BaseRef, d.ConfigError), nil
+	}
+	if d.ConfigSource != config.SourceDefaults {
 		return d.ConfigSource, nil
 	}
 	found, err := d.locate(ctx, ConfigPath)
