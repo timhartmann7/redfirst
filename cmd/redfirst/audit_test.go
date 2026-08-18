@@ -89,6 +89,34 @@ func TestAudit_ReadsTheConfigFromBase(t *testing.T) {
 	}
 }
 
+// TestAudit_FlagsReachTheWalk covers the wiring between the flag set and the
+// walk: every one of these changes what gets audited, and a flag parsed into
+// the wrong field would leave every other test in this slice green.
+func TestAudit_FlagsReachTheWalk(t *testing.T) {
+	t.Parallel()
+
+	repo := testkit.AuditHistory(t)
+
+	capped := runAuditJSON(t, repo.Dir, "--last", "3", "--per-pr")
+	if capped.Units != 3 || len(capped.PerUnit) != 3 {
+		t.Errorf("--last 3 --per-pr audited %d units and printed %d", capped.Units, len(capped.PerUnit))
+	}
+
+	since := runAuditJSON(t, repo.Dir, "--last", "1", "--since", "2026-01-13T00:00:00+00:00")
+	if since.Units != 3 {
+		t.Errorf("--since audited %d units, want the 3 after the cutoff and not the 1 --last asked for",
+			since.Units)
+	}
+	if len(since.PerUnit) != 0 {
+		t.Errorf("the breakdown reached the report without --per-pr: %d units", len(since.PerUnit))
+	}
+
+	pinned := runAuditJSON(t, repo.Dir, "--unit", "commit")
+	if pinned.Unit != audit.ModeCommit {
+		t.Errorf("--unit commit audited %q units", pinned.Unit)
+	}
+}
+
 func TestAudit_RejectsFlagsItCannotHonour(t *testing.T) {
 	t.Parallel()
 

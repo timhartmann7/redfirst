@@ -108,6 +108,42 @@ func TestAudit_DetectsPlainCommitHistoryWhenNothingElseFits(t *testing.T) {
 	}
 }
 
+// TestAudit_HalfTheHistoryIsNotAMajority pins the boundary of the detection
+// rule: the spec asks for more than half of the sample, and a repository that
+// merges half its work is not a repository that merges.
+func TestAudit_HalfTheHistoryIsNotAMajority(t *testing.T) {
+	t.Parallel()
+
+	r := testkit.NewRepo(t)
+	r.Write("README.md", "# shop\n")
+	r.Commit("chore: seed the tree")
+
+	r.Branch("feature/total")
+	r.Write("src/total.js", "export const total = () => 0\n")
+	r.Commit("feat: add total")
+	r.Checkout(testkit.FixtureBase)
+	r.Merge("feature/total", "Merge pull request #1 from shop/total")
+
+	r.Write("README.md", "# shop\n\nA shop.\n")
+	r.Commit("docs: describe the shop")
+
+	r.Branch("feature/discount")
+	r.Write("src/discount.js", "export const discount = () => 0\n")
+	r.Commit("feat: add the discount")
+	r.Checkout(testkit.FixtureBase)
+	r.Merge("feature/discount", "Merge pull request #2 from shop/discount")
+
+	// Two merges out of four first-parent commits, the root included.
+	got := run(t, r, options())
+
+	if got.Unit != audit.ModeCommit {
+		t.Errorf("unit = %q on a history that is half merges, want %q", got.Unit, audit.ModeCommit)
+	}
+	if got.Units != 3 {
+		t.Errorf("audited %d units, want the 3 that follow the root: %v", got.Units, subjects(got))
+	}
+}
+
 // TestAudit_UnitFlagOverridesDetection proves the flag reaches the walk: a
 // squashed history holds no merge commits, so asking for merges audits nothing.
 func TestAudit_UnitFlagOverridesDetection(t *testing.T) {
