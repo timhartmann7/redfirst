@@ -112,6 +112,35 @@ func TestExplain_AnswersForThePathWhateverTheShellPassed(t *testing.T) {
 	}
 }
 
+// TestExplain_RefusesARelativePathTypedFromASubdirectory covers the spelling
+// with two readings. From inside packages/api, "tests/x.ts" names one file to
+// the shell and another to the rules, a rooted glob matches one and misses the
+// other, and answering either would settle an argument with a coin toss.
+//
+// No t.Parallel: t.Chdir moves the whole process, which is the point.
+func TestExplain_RefusesARelativePathTypedFromASubdirectory(t *testing.T) {
+	r := testkit.CleanFix(t)
+	t.Chdir(filepath.Join(r.Dir, "src"))
+
+	err := run(context.Background(),
+		[]string{"explain", "--repo", ".", "--base", testkit.FixtureBase, "--path", "total.test.js"},
+		io.Discard, io.Discard)
+	if err == nil {
+		t.Fatal("a path with two readings got one answer")
+	}
+	for _, want := range []string{"src/total.test.js", "total.test.js", "absolute"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not carry %q", err, want)
+		}
+	}
+
+	// An absolute path has one reading, so it still gets answered from here.
+	got := explainOutput(t, ".", "--path", filepath.Join(r.Dir, "src/total.test.js"))
+	if !strings.Contains(got, "tests.patterns     yes") {
+		t.Errorf("an absolute path was not judged from the subdirectory:\n%s", got)
+	}
+}
+
 // TestExplain_RefusesAPathOutsideTheRepository keeps the answer honest where it
 // cannot be given: the rules describe one repository, and every list in them
 // would report "no" for a file that is not in it.

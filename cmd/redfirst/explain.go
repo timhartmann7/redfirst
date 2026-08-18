@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -57,18 +58,50 @@ func repoRelative(root, typed string) (string, error) {
 		return "", nil
 	}
 	target := typed
-	if filepath.IsAbs(target) {
+	switch prefix := workingPrefix(root); {
+	case filepath.IsAbs(target):
 		rel, err := filepath.Rel(resolved(root), resolved(target))
 		if err != nil {
 			return "", fmt.Errorf("cannot place %s inside %s: %w", typed, root, err)
 		}
 		target = rel
+	case prefix != "":
+		// A relative path reads one way to the shell that completed it and
+		// another to the rules, which name paths from the top level. Both
+		// readings exist, and a rooted glob like tests/** matches one and misses
+		// the other, so neither gets answered: a wrong answer is the one thing a
+		// command for settling arguments may not produce.
+		clean := path.Clean(filepath.ToSlash(typed))
+		return "", fmt.Errorf(
+			"%s is ambiguous from %s: it names either %s or %s from the top level. "+
+				"Pass an absolute path, or run at the top level",
+			typed, prefix, path.Join(prefix, clean), clean)
 	}
 	target = path.Clean(filepath.ToSlash(target))
 	if target == ".." || strings.HasPrefix(target, "../") {
 		return "", fmt.Errorf("%s lies outside the repository at %s; name a path inside it", typed, root)
 	}
 	return target, nil
+}
+
+// workingPrefix is where the shell stands inside the work tree, empty when it
+// stands at the top of it or outside it altogether. Outside covers the ordinary
+// remote case, `explain --repo ../other`, where a relative path can only mean
+// what the rules mean.
+func workingPrefix(root string) string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	rel, err := filepath.Rel(resolved(root), resolved(cwd))
+	if err != nil {
+		return ""
+	}
+	prefix := filepath.ToSlash(rel)
+	if prefix == "." || prefix == ".." || strings.HasPrefix(prefix, "../") {
+		return ""
+	}
+	return prefix
 }
 
 // resolved follows the symlinks of a path that exists. A temporary directory on
