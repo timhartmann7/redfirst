@@ -60,14 +60,31 @@ func Load(ctx context.Context, src FileSource, ref, path string) (domain.Config,
 	return cfg, "base:" + path, nil
 }
 
-// DowngradeCasesWithoutHooks lowers tests.immutability from cases to
-// append-only and reports whether it did. The caller is the runner, which is
-// the only place that knows whether hooks exist; append-only forbids more than
-// cases does, so the downgrade moves toward strictness.
-func DowngradeCasesWithoutHooks(cfg *domain.Config) bool {
-	if cfg.Tests.Immutability != domain.ImmutabilityCases {
-		return false
+// DowngradeCasesWithoutHooks lowers every cases mode to append-only and names
+// the config keys it changed. The caller is the runner, which is the only place
+// that knows whether hooks exist; append-only forbids more than cases does, so
+// the downgrade moves toward strictness.
+//
+// tests.fixtures_immutability travels with tests.immutability. Left at cases it
+// would take the whole gate to unavailable for want of case names, and a config
+// key that switches a check off is the weakening this downgrade exists to
+// avoid.
+func DowngradeCasesWithoutHooks(cfg *domain.Config) []string {
+	keys := []struct {
+		name string
+		mode *domain.Immutability
+	}{
+		{"tests.immutability", &cfg.Tests.Immutability},
+		{"tests.fixtures_immutability", &cfg.Tests.FixturesImmutability},
 	}
-	cfg.Tests.Immutability = domain.ImmutabilityAppendOnly
-	return true
+
+	var downgraded []string
+	for _, k := range keys {
+		if *k.mode != domain.ImmutabilityCases {
+			continue
+		}
+		*k.mode = domain.ImmutabilityAppendOnly
+		downgraded = append(downgraded, k.name)
+	}
+	return downgraded
 }

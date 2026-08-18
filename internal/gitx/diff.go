@@ -58,6 +58,9 @@ func (r *Repo) Diff(ctx context.Context, base, head string) (domain.Diff, error)
 	if err := r.markGenerated(ctx, mergeBase, files, byPath); err != nil {
 		return domain.Diff{}, err
 	}
+	if err := r.readAddedLines(ctx, mergeBase, headSHA, files); err != nil {
+		return domain.Diff{}, err
+	}
 	return domain.Diff{Base: baseSHA, Head: headSHA, MergeBase: mergeBase, Files: files}, nil
 }
 

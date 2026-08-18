@@ -173,17 +173,54 @@ func TestDefaults_AreFreshOnEveryCall(t *testing.T) {
 	}
 }
 
-func TestDowngradeCasesWithoutHooks_LowersCasesToAppendOnly(t *testing.T) {
+func TestDowngradeCasesWithoutHooks_LowersBothModesAndNamesTheKeys(t *testing.T) {
 	t.Parallel()
 
-	cfg := config.Defaults()
-	cfg.Tests.Immutability = domain.ImmutabilityCases
-
-	if !config.DowngradeCasesWithoutHooks(&cfg) {
-		t.Fatal("downgrade reported no change, want it to report one")
+	tests := []struct {
+		name     string
+		tests    domain.Immutability
+		fixtures domain.Immutability
+		want     []string
+	}{
+		{
+			name:     "TestFilesAlone",
+			tests:    domain.ImmutabilityCases,
+			fixtures: domain.ImmutabilityWarn,
+			want:     []string{"tests.immutability"},
+		},
+		{
+			// Left at cases this key would take the whole gate to unavailable
+			// for want of case names, which is a check switched off rather
+			// than a rule made stricter.
+			name:     "TestSurfaceAlone",
+			tests:    domain.ImmutabilityAppendOnly,
+			fixtures: domain.ImmutabilityCases,
+			want:     []string{"tests.fixtures_immutability"},
+		},
+		{
+			name:     "BothAtOnce",
+			tests:    domain.ImmutabilityCases,
+			fixtures: domain.ImmutabilityCases,
+			want:     []string{"tests.immutability", "tests.fixtures_immutability"},
+		},
 	}
-	if cfg.Tests.Immutability != domain.ImmutabilityAppendOnly {
-		t.Errorf("immutability = %q, want %q", cfg.Tests.Immutability, domain.ImmutabilityAppendOnly)
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := config.Defaults()
+			cfg.Tests.Immutability, cfg.Tests.FixturesImmutability = tc.tests, tc.fixtures
+
+			if got := config.DowngradeCasesWithoutHooks(&cfg); !slices.Equal(got, tc.want) {
+				t.Errorf("downgraded %v, want %v", got, tc.want)
+			}
+			for _, got := range []domain.Immutability{cfg.Tests.Immutability, cfg.Tests.FixturesImmutability} {
+				if got == domain.ImmutabilityCases {
+					t.Errorf("mode stayed %q, want it lowered to %q", got, domain.ImmutabilityAppendOnly)
+				}
+			}
+		})
 	}
 }
 
@@ -200,13 +237,14 @@ func TestDowngradeCasesWithoutHooks_LeavesEveryOtherModeAlone(t *testing.T) {
 		t.Run(string(mode), func(t *testing.T) {
 			t.Parallel()
 			cfg := config.Defaults()
-			cfg.Tests.Immutability = mode
+			cfg.Tests.Immutability, cfg.Tests.FixturesImmutability = mode, mode
 
-			if config.DowngradeCasesWithoutHooks(&cfg) {
-				t.Errorf("downgrade reported a change to %q, want none", mode)
+			if got := config.DowngradeCasesWithoutHooks(&cfg); len(got) != 0 {
+				t.Errorf("downgrade reported %v for %q, want none", got, mode)
 			}
-			if cfg.Tests.Immutability != mode {
-				t.Errorf("immutability = %q, want %q", cfg.Tests.Immutability, mode)
+			if cfg.Tests.Immutability != mode || cfg.Tests.FixturesImmutability != mode {
+				t.Errorf("modes = %q and %q, want %q on both",
+					cfg.Tests.Immutability, cfg.Tests.FixturesImmutability, mode)
 			}
 		})
 	}

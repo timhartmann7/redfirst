@@ -138,6 +138,33 @@ func TestReport_TextFailureLineSaysWhatIsWrong(t *testing.T) {
 	}
 }
 
+func TestReport_TextWarningLineCarriesItsEvidence(t *testing.T) {
+	t.Parallel()
+	// The default severity of diff-budget is warn, so this is what an ordinary
+	// oversized human PR prints. Without the evidence the reader gets six
+	// numbers and has to work out which of the three limits broke.
+	got := renderText(t, domain.Report{Gates: []domain.GateResult{{
+		ID:      domain.GateDiffBudget,
+		Status:  domain.StatusWarn,
+		Message: "24/20 files, +910/800, -12/400",
+		Evidence: []domain.Evidence{
+			{Detail: "24 files, the budget allows 20"},
+			{Detail: "910 added lines, the budget allows 800"},
+		},
+	}}})
+
+	want := []string{
+		"WARN  diff-budget            24/20 files, +910/800, -12/400",
+		"      24 files, the budget allows 20",
+		"      910 added lines, the budget allows 800",
+	}
+	for _, line := range want {
+		if !strings.Contains(got, line+"\n") {
+			t.Errorf("report is missing line %q\n---\n%s", line, got)
+		}
+	}
+}
+
 func TestReport_TextAlignsMessageAtColumn29(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
