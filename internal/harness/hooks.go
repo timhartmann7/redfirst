@@ -17,6 +17,10 @@ import (
 
 // The five scripts of the hook contract. Three are required for tier 2; a
 // project with no external services leaves two of those as empty stubs.
+// shell is what sources env.sh. The hooks themselves keep their own
+// interpreter, whatever their shebang names.
+const shell = "/bin/sh"
+
 const (
 	hookEnv   = "env.sh"
 	hookUp    = "env-up.sh"
@@ -43,6 +47,10 @@ const (
 // which is what "exports variables ahead of the rest" means. The hook keeps its
 // own interpreter: exec honours its shebang.
 const sourceThenExec = `. "$1" || exit 1; shift; exec "$@"`
+
+// sourceThenReport is sourceThenExec with the hook replaced by a word we can
+// look for. See validateEnvScript.
+const sourceThenReport = `. "$1" || exit 1; printf ready`
 
 // hooks are the scripts of the base ref, copied into the run directory.
 type hooks struct {
@@ -139,6 +147,29 @@ type outcome struct {
 	output string
 }
 
+// validateEnvScript proves that sourcing env.sh returns control to the shell.
+//
+// A file that is sourced can end the shell that sourced it. An `exit 0` inside
+// env.sh, or a `set -e` over a command that fails, leaves the wrapper exiting
+// zero without ever reaching the hook, and the run would take that for a hook
+// that passed: a green verdict over a test.sh nobody executed. So we source it
+// once at the start and ask the shell to say it survived.
+func validateEnvScript(ctx context.Context, h hooks) error {
+	if h.env == "" {
+		return nil
+	}
+
+	out, err := exec.CommandContext(ctx, shell, "-c", sourceThenReport, "sh", h.env).Output()
+	if err != nil {
+		return fmt.Errorf("%w: %s/%s: %w", domain.ErrHarness, HooksDir, hookEnv, err)
+	}
+	if string(out) != "ready" {
+		return fmt.Errorf("%w: %s/%s ends the shell that sources it, so no hook would run after it",
+			domain.ErrHarness, HooksDir, hookEnv)
+	}
+	return nil
+}
+
 // run executes one hook in dir and waits for it. It reports whether the script
 // exited zero; a non-zero exit is an answer rather than a failure, and only a
 // script that could not run at all, or one the deadline killed, is an error.
@@ -194,7 +225,7 @@ func (h hooks) mustRun(ctx context.Context, script, dir string, env []string) er
 func (h hooks) command(ctx context.Context, script, dir string, env []string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, script)
 	if h.env != "" {
-		cmd = exec.CommandContext(ctx, "/bin/sh", "-c", sourceThenExec, "sh", h.env, script)
+		cmd = exec.CommandContext(ctx, shell, "-c", sourceThenExec, "sh", h.env, script)
 	}
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), env...)

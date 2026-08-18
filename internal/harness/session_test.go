@@ -306,6 +306,52 @@ func TestSession_NonExecutableHookNamesTheFile(t *testing.T) {
 	}
 }
 
+// TestSession_AnEnvScriptThatEndsTheShellIsRefused closes the one way a hook
+// set can pass without running anything: env.sh is sourced, so an exit inside
+// it ends the shell that was about to run the hook, and the run would read that
+// as a hook which passed.
+func TestSession_AnEnvScriptThatEndsTheShellIsRefused(t *testing.T) {
+	t.Parallel()
+
+	set := recording()
+	set.env = "env-ends-the-shell.sh"
+	f := newFixture(t, set)
+
+	_, err := f.tryOpen(t, false)
+	if !errors.Is(err, domain.ErrHarness) {
+		t.Fatalf("open with an env.sh that exits: %v, want a harness error", err)
+	}
+	if !strings.Contains(err.Error(), "env.sh") {
+		t.Errorf("the error does not name the script:\n%v", err)
+	}
+}
+
+// TestSession_AFailedOpenLeavesNothingBehind holds the requirement that every
+// temporary directory goes, on the path where the session never came to exist.
+func TestSession_AFailedOpenLeavesNothingBehind(t *testing.T) {
+	t.Parallel()
+
+	set := recording()
+	set.up = "env-up-broken.sh"
+	f := newFixture(t, set)
+	work := t.TempDir()
+
+	_, err := harness.Open(t.Context(), harness.Options{
+		Source: gitRepo(t, f), Base: testkit.FixtureBase, WorkDir: work,
+	})
+	if err == nil {
+		t.Fatal("open with a broken env-up.sh succeeded")
+	}
+
+	entries, readErr := os.ReadDir(work)
+	if readErr != nil {
+		t.Fatalf("read the work dir: %v", readErr)
+	}
+	if len(entries) != 0 {
+		t.Errorf("the failed open left %d entries behind: %v", len(entries), entries)
+	}
+}
+
 // TestSession_EnvScriptExportsAheadOfTheOtherHooks covers the optional env.sh:
 // it is sourced, so what it exports reaches the hook that runs after it.
 func TestSession_EnvScriptExportsAheadOfTheOtherHooks(t *testing.T) {

@@ -102,6 +102,9 @@ func Open(ctx context.Context, opts Options) (s *Session, err error) {
 	if s.hooks.reset != "" && !opts.Fresh {
 		s.mode = ModeReused
 	}
+	if err = validateEnvScript(ctx, s.hooks); err != nil {
+		return nil, err
+	}
 	if s.mode == ModeReused {
 		if err = s.up(ctx); err != nil {
 			return nil, err
