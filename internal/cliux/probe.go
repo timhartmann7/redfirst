@@ -108,18 +108,18 @@ func (d Doctor) caseNamesRow(run domain.Run, help runnerHelp) row {
 		return row{key: key, values: []string{
 			fmt.Sprintf("none · %s exited non-zero and wrote no case to $REDFIRST_RESULTS", hookTest),
 			fmt.Sprintf("run it by hand in a working copy to see what it said: %s", hookTest),
-			help.results,
+			"fix: " + help.results,
 		}}
 	case len(run.Cases) == 0:
 		return row{key: key, values: []string{
 			fmt.Sprintf("none · %s wrote no case to $REDFIRST_RESULTS, so every gate that reads it is blind", hookTest),
-			help.results,
+			"fix: " + help.results,
 		}}
 	case !run.Named():
 		return row{key: key, values: []string{
 			fmt.Sprintf("unnamed · %s reports cases without names", hookTest),
 			"a diff that modifies an existing test file gets exit code 5 until that changes",
-			help.results,
+			"fix: " + help.results,
 		}}
 	}
 	return row{key: key, values: []string{fmt.Sprintf("%s named by %s", plural(len(run.Cases)), hookTest)}}
@@ -159,7 +159,7 @@ func (d Doctor) filterRow(
 				hookTest, plural(len(ran)), a, b),
 			fmt.Sprintf("the red-green probes will run the whole suite %d times over instead of the files of the diff",
 				d.Config.RedGreen.ProbeRuns),
-			help.filter,
+			"fix: " + help.filter,
 		}}
 	}
 	return row{key: key, values: []string{fmt.Sprintf(
@@ -207,19 +207,21 @@ func (d Doctor) rerunRow(ctx context.Context, first, second domain.Run, help run
 	took := fmt.Sprintf("run 1 took %s, run 2 took %s", round(first.Took), round(second.Took))
 	switch {
 	case staged:
-		return row{key: key, values: []string{fmt.Sprintf(
-			"cannot tell · %s, and %s branches on $REDFIRST_PROBE_INDEX, so the first run does work the second skips",
-			took, hookTest)}}
+		return row{key: key, values: []string{
+			"cannot tell · " + took,
+			fmt.Sprintf("%s branches on $REDFIRST_PROBE_INDEX, so the first run does work the second skips", hookTest),
+		}}
 	case first.Took < rerunFloor:
 		return row{key: key, values: []string{
-			"cannot tell · " + took + ", too short to tell a replayed result from the cost of starting a runner",
+			"cannot tell · " + took,
+			"too short to tell a replayed result from the cost of starting a runner",
 		}}
 	case second.Took*rerunRatio < first.Took:
 		return row{key: key, values: []string{
 			fmt.Sprintf("replayed · %s, and %s does the same work in both", took, hookTest),
 			fmt.Sprintf("the %d red-green probes collapse into one, and a flaky test walks through",
 				d.Config.RedGreen.ProbeRuns),
-			help.rerun,
+			"fix: " + help.rerun,
 		}}
 	}
 	return row{key: key, values: []string{"fresh · " + took}}
