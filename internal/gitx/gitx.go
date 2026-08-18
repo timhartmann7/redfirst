@@ -38,6 +38,11 @@ func Open(ctx context.Context, dir string) (*Repo, error) {
 	return r, nil
 }
 
+// Dir is the top level of the work tree. `redfirst init` writes the files it
+// generates at repository-relative paths, and a path resolved against a
+// subdirectory would put a workflow where no runner looks for it.
+func (r *Repo) Dir() string { return r.dir }
+
 // Resolve turns a ref into a commit sha. Annotated tags get peeled, so the
 // caller always holds a commit and never a tag object.
 func (r *Repo) Resolve(ctx context.Context, ref string) (string, error) {
