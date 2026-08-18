@@ -89,13 +89,30 @@ func (r *Repo) Write(path, content string) {
 // WriteBinary creates or replaces a file with raw bytes.
 func (r *Repo) WriteBinary(path string, content []byte) {
 	r.t.Helper()
+	r.writeFile(path, content, 0o644)
+}
+
+// WriteScript creates or replaces an executable file. A hook committed without
+// the bit cannot run, and git carries the bit through the commit.
+func (r *Repo) WriteScript(path, content string) {
+	r.t.Helper()
+	r.writeFile(path, []byte(content), 0o755)
+}
+
+func (r *Repo) writeFile(path string, content []byte, mode os.FileMode) {
+	r.t.Helper()
 
 	full := filepath.Join(r.Dir, filepath.FromSlash(path))
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		r.t.Fatalf("mkdir for %s: %v", path, err)
 	}
-	if err := os.WriteFile(full, content, 0o644); err != nil {
+	if err := os.WriteFile(full, content, mode); err != nil {
 		r.t.Fatalf("write %s: %v", path, err)
+	}
+	// WriteFile leaves the mode of an existing file alone, and a fixture that
+	// replaces a script would otherwise keep whatever mode it had before.
+	if err := os.Chmod(full, mode); err != nil {
+		r.t.Fatalf("chmod %s: %v", path, err)
 	}
 }
 

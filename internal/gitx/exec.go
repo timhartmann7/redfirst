@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"syscall"
@@ -42,7 +43,17 @@ func (r *Repo) command(ctx context.Context, args ...string) *exec.Cmd {
 // runLine executes git and returns its output as one trimmed line. It serves
 // the short answers, a sha or a yes and no; diff output goes through runStream.
 func (r *Repo) runLine(ctx context.Context, args ...string) (string, error) {
+	return r.runLineEnv(ctx, nil, args...)
+}
+
+// runLineEnv is runLine with extra entries in the child's environment. One
+// caller needs it: exporting a tree redirects the index git would otherwise
+// write inside the repository under judgement.
+func (r *Repo) runLineEnv(ctx context.Context, env []string, args ...string) (string, error) {
 	cmd := r.command(ctx, args...)
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
