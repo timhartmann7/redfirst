@@ -100,8 +100,10 @@ func (g *SuiteGreen) classify(
 
 	// The suite on base costs a working copy of its own, so it runs on the one
 	// path that needs it: nothing the diff wrote failed, and a failure it did
-	// not write survived the retry.
-	if len(blocking) == 0 && len(inherited) > 0 {
+	// not write survived the retry. With a blocking failure in hand the run is
+	// refused either way, and the answer would change nothing.
+	askedBase := len(blocking) == 0 && len(inherited) > 0
+	if askedBase {
 		if err := g.blameTheRepository(ctx, probe, inherited); err != nil {
 			return domain.GateResult{}, err
 		}
@@ -111,7 +113,7 @@ func (g *SuiteGreen) classify(
 		res.Warnings = warnings
 		return res, nil
 	}
-	return suiteRefusal(suite, blocking, inherited, warnings), nil
+	return suiteRefusal(suite, blocking, inherited, warnings, askedBase), nil
 }
 
 // blameTheRepository runs the suite on base and reports a harness failure where
@@ -213,8 +215,11 @@ func contains(list []string, want string) bool {
 }
 
 // suiteRefusal is the report line for a suite that lost cases the gate judges.
+// askedBase says whether the suite on base actually ran: a line claiming a case
+// was green there when nobody looked would be a report inventing a fact.
 func suiteRefusal(
-	suite domain.Runs, blocking, inherited []domain.Case, warnings []domain.Warning,
+	suite domain.Runs, blocking, inherited []domain.Case,
+	warnings []domain.Warning, askedBase bool,
 ) domain.GateResult {
 	res := domain.GateResult{
 		Status:      domain.StatusFail,
@@ -229,10 +234,12 @@ func suiteRefusal(
 			File: c.File, Case: c.Name, Detail: "touched by the diff",
 		})
 	}
+	detail := "not touched by the diff"
+	if askedBase {
+		detail += ", green on base"
+	}
 	for _, c := range inherited {
-		res.Evidence = append(res.Evidence, domain.Evidence{
-			File: c.File, Case: c.Name, Detail: "not touched by the diff, green on base",
-		})
+		res.Evidence = append(res.Evidence, domain.Evidence{File: c.File, Case: c.Name, Detail: detail})
 	}
 	return res
 }

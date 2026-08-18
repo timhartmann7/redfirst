@@ -2,6 +2,7 @@ package exec_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/timhartmann7/redfirst/internal/domain"
@@ -139,5 +140,37 @@ func TestSuiteGreen_ATestTheDiffBrokeWithoutTouchingItStillBlocks(t *testing.T) 
 	})
 	if len(got.Evidence) != 1 || got.Evidence[0].Detail != "not touched by the diff, green on base" {
 		t.Errorf("evidence = %v, want the case placed on the diff rather than on the repository", got.Evidence)
+	}
+}
+
+// TestSuiteGreen_AnUncheckedBaseIsNotReportedAsGreenOnBase keeps the report
+// from inventing a fact. With a blocking failure in hand the run is refused
+// either way, so the expensive suite on base is skipped, and a line claiming a
+// case was green there would state something nobody looked at.
+func TestSuiteGreen_AnUncheckedBaseIsNotReportedAsGreenOnBase(t *testing.T) {
+	t.Parallel()
+
+	v := fixture{
+		// One failure the diff wrote and one it inherited, in the same run.
+		base: func(r *testkit.Repo) { r.Write("src/legacy.test.js", legacyBroken) },
+		head: func(r *testkit.Repo) {
+			r.Write("src/total.js", totalFixed)
+			r.Write("src/total.test.js", totalTest+unfixableCase)
+		},
+	}.judge(t)
+
+	got := v.gate(t, domain.GateSuiteGreen)
+	if got.Status != domain.StatusFail {
+		t.Fatalf("suite-green is %q, want a refusal: %s", got.Status, got.Message)
+	}
+	// Exit 1 rather than 2: the diff broke something, whatever the state of
+	// the case it inherited.
+	if v.exit != 1 {
+		t.Errorf("exit code = %d, want 1", v.exit)
+	}
+	for _, e := range got.Evidence {
+		if strings.Contains(e.Detail, "green on base") {
+			t.Errorf("evidence %+v claims a base result the run never asked for", e)
+		}
 	}
 }
