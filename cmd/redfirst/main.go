@@ -56,6 +56,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return auditHistory(ctx, args[1:], stdout, stderr)
 	case "explain":
 		return explainRules(ctx, args[1:], stdout, stderr)
+	case "init":
+		return initRepo(ctx, args[1:], stdout, stderr)
 	case "version":
 		_, err := fmt.Fprintln(stdout, domain.Version)
 		return err
@@ -72,6 +74,7 @@ func usage(w io.Writer) error {
 
   verify    judge one diff
   audit     apply the static gates to the history already merged
+  init      generate the CI workflow and the config
   explain   print the rules a verify run would apply
   version   print the redfirst version
 
