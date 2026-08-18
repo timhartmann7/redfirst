@@ -74,6 +74,12 @@ func Open(ctx context.Context, opts Options) (s *Session, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: create the run directory: %w", domain.ErrHarness, err)
 	}
+	// Absolute from here on. Every hook runs with a working directory of its
+	// own, and a relative --work-dir would send it looking for the scripts
+	// under the working copy instead.
+	if dir, err = filepath.Abs(dir); err != nil {
+		return nil, fmt.Errorf("%w: resolve the run directory: %w", domain.ErrHarness, err)
+	}
 	defer func() {
 		if err != nil {
 			_ = os.RemoveAll(dir)
