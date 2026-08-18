@@ -36,7 +36,7 @@ func InitCI(root string, rel Release) (string, error) {
 		return "", errors.New(
 			"this build knows no published release to pin; run `init --ci` from a released binary")
 	}
-	return write(root, WorkflowPath, workflowYAML(rel))
+	return write(root, WorkflowPath, workflowYAML(rel), 0o644)
 }
 
 // InitConfig writes the strict rule set for agent branches. The built-in
@@ -44,29 +44,43 @@ func InitCI(root string, rel Release) (string, error) {
 // that fires on an ordinary diff gets the tool deleted rather than the diff
 // fixed.
 func InitConfig(root string) (string, error) {
-	return write(root, ConfigPath, configTOML())
+	return write(root, ConfigPath, configTOML(), 0o644)
 }
 
 // write puts one generated file in place and never over an existing one. A
 // repository that already carries a workflow had a reason for it, and reading
 // what is there beats guessing what it was.
-func write(root, rel string, content string) (string, error) {
+func write(root, rel string, content string, mode os.FileMode) (string, error) {
 	full := filepath.Join(root, filepath.FromSlash(rel))
 
-	switch _, err := os.Stat(full); {
-	case err == nil:
-		return "", fmt.Errorf("%s exists already; move it aside to generate a new one", rel)
-	case !errors.Is(err, fs.ErrNotExist):
-		return "", fmt.Errorf("look for %s: %w", rel, err)
+	if err := free(root, rel); err != nil {
+		return "", err
 	}
-
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		return "", fmt.Errorf("create the directory for %s: %w", rel, err)
 	}
-	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(full, []byte(content), mode); err != nil {
 		return "", fmt.Errorf("write %s: %w", rel, err)
 	}
+	// WriteFile applies the umask, and a hook without its executable bit is a
+	// broken harness rather than a red test.
+	if err := os.Chmod(full, mode); err != nil {
+		return "", fmt.Errorf("set the mode of %s: %w", rel, err)
+	}
 	return rel, nil
+}
+
+// free reports whether a generated file may be written. A hook set is checked
+// whole before any of it lands: half a hook set is the one state the contract
+// has no name for, and it would be left behind by a refusal on the third file.
+func free(root, rel string) error {
+	switch _, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel))); {
+	case err == nil:
+		return fmt.Errorf("%s exists already; move it aside to generate a new one", rel)
+	case !errors.Is(err, fs.ErrNotExist):
+		return fmt.Errorf("look for %s: %w", rel, err)
+	}
+	return nil
 }
 
 // tomlList renders the items of a list, one per line, as the generated config

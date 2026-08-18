@@ -1,0 +1,9 @@
+redfirst v0.1.0 · doctor · tier=1
+
+  config    base:redfirst.toml
+  hooks     not found → red-green, suite-green unavailable
+  workflow  base:.github/workflows/redfirst.yml
+  detected  node + vitest, no docker-compose
+
+  To reach tier 2:
+    redfirst init --hooks node-unit
