@@ -53,12 +53,14 @@
       "minimum": 1
     },
     "diff_digest": {
-      "description": "Digest of the patch under judgement. Published for the orchestrator to deduplicate attempts; redfirst does not use it.",
-      "type": "string"
+      "description": "Digest of the patch under judgement: the merge base, and what the diff did to every path plus the object it became. Published for the orchestrator to deduplicate attempts; redfirst does not use it.",
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
     },
     "base_probe_key": {
-      "description": "Digest identifying the base probe. Published so logs can answer whether a cache would have paid off; redfirst does not use it.",
-      "type": "string"
+      "description": "Digest identifying the base probe: the commit it runs on, the hooks that run it and the head content of the test files it overlays. Absent where no base probe would run. Published so logs can answer whether a cache would have paid off; redfirst does not use it.",
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
     },
     "verdict": {
       "description": "Run outcome as a word. The exit code carries the detail.",
