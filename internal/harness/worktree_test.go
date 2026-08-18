@@ -243,6 +243,29 @@ func TestWorktree_ResultsWithoutNamesWithholdCapCaseNames(t *testing.T) {
 	}
 }
 
+// TestWorktree_APhaseStartedAgainReadsNoResultsButItsOwn covers the run that
+// died before it wrote: the phase numbers its runs from one again, and the
+// results of the phase before it sit under that very name.
+func TestWorktree_APhaseStartedAgainReadsNoResultsButItsOwn(t *testing.T) {
+	t.Parallel()
+
+	set := recording()
+	set.test = "test-once.sh"
+	f := newFixture(t, set)
+	s := f.open(t, false)
+	defer closeSession(t, t.Context(), s)
+
+	first := mustRun(t, worktree(t, s, harness.PhaseBase, testkit.FixtureBase))
+	second := mustRun(t, worktree(t, s, harness.PhaseBase, testkit.FixtureBase))
+
+	if len(first.Cases) != 1 {
+		t.Fatalf("the first run read %v, want the one case the hook reported", first.Cases)
+	}
+	if len(second.Cases) != 0 {
+		t.Errorf("the second run read %v; the hook wrote nothing that time", second.Cases)
+	}
+}
+
 // TestWorktree_TheDeadlineKillsTheProcessTreeAndTearsDown holds the two things
 // a timeout owes: killing the script alone would leave the containers and the
 // test runner it started behind, and the environment still has to come down.
@@ -271,10 +294,11 @@ func TestWorktree_TheDeadlineKillsTheProcessTreeAndTearsDown(t *testing.T) {
 
 	started := time.Now()
 	_, err := w.Run(ctx, nil)
+	elapsed := time.Since(started)
 	pid := <-child
 	if pid == 0 {
-		t.Fatalf("the hook never recorded the process it started: run said %v after %s, and the log holds\n%s",
-			err, time.Since(started), strings.Join(f.lines(), "\n"))
+		t.Fatalf("the hook never recorded the process it started: run said %v after %s (ctx %v), log holds\n%s",
+			err, elapsed, ctx.Err(), strings.Join(f.lines(), "\n"))
 	}
 	if !errors.Is(err, domain.ErrHarness) {
 		t.Fatalf("a run the cancellation killed: %v, want a harness error", err)
