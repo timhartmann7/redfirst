@@ -13,12 +13,10 @@ import (
 	"github.com/timhartmann7/redfirst/internal/config"
 	"github.com/timhartmann7/redfirst/internal/domain"
 	"github.com/timhartmann7/redfirst/internal/gitx"
+	"github.com/timhartmann7/redfirst/internal/harness"
 	"github.com/timhartmann7/redfirst/internal/report"
 	"github.com/timhartmann7/redfirst/internal/runner"
 )
-
-// hooksDir is the directory whose presence on base switches on tier 2.
-const hooksDir = ".redfirst"
 
 type verifyFlags struct {
 	base    string
@@ -101,7 +99,9 @@ func judge(ctx context.Context, f verifyFlags) ([]domain.GateResult, domain.Repo
 	if err != nil {
 		return nil, domain.Report{}, err
 	}
-	hooks, err := repo.Exists(ctx, f.base, hooksDir)
+	// The presence of the hook directory on base is what switches tier 2 on,
+	// and the harness owns where it lives.
+	hooks, err := repo.Exists(ctx, f.base, harness.HooksDir)
 	if err != nil {
 		return nil, domain.Report{}, err
 	}
