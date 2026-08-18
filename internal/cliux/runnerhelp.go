@@ -28,7 +28,7 @@ func helpFor(runner string) runnerHelp {
 			filter:  "jest $REDFIRST_FILTER",
 		},
 		"pytest": {
-			results: `pytest --MUTATED-junitxml="$REDFIRST_RESULTS"`,
+			results: `pytest --junitxml="$REDFIRST_RESULTS"`,
 			filter:  "pytest $REDFIRST_FILTER",
 		},
 		"go test": {

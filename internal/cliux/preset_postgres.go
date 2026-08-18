@@ -91,17 +91,24 @@ const postgresReset = `
 # next run the schema was never applied.
 #
 # Run from the hook directory, beside compose.yaml, like every service hook.
-docker compose exec -T postgres psql -U "$PGUSER" -d "$PGDATABASE" -q -c '
+#
+# A quoted heredoc, and that is load-bearing rather than taste: inside shell
+# single quotes a doubled '' closes the quote and opens it again instead of
+# reaching SQL, so the quotes around every literal below would be eaten before
+# psql saw them. <<'SQL' expands nothing at all, which is what leaves $$, the
+# quotes and the % patterns to arrive as written.
+docker compose exec -T postgres psql -U "$PGUSER" -d "$PGDATABASE" -q <<'SQL'
 DO $$
 DECLARE t text;
 BEGIN
   FOR t IN
     SELECT tablename FROM pg_tables
-    WHERE schemaname = ''public'' AND tablename NOT LIKE ''%migration%''
+    WHERE schemaname = 'public' AND tablename NOT LIKE '%migration%'
   LOOP
-    EXECUTE format(''TRUNCATE TABLE %I CASCADE'', t);
+    EXECUTE format('TRUNCATE TABLE %I CASCADE', t);
   END LOOP;
-END $$;'
+END $$;
+SQL
 `
 
 const postgresTest = `

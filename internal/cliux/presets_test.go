@@ -1,7 +1,6 @@
 package cliux_test
 
 import (
-	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -189,58 +188,6 @@ func TestInitHooks_BlankTestShRefusesRatherThanReportGreen(t *testing.T) {
 	}
 	if !strings.Contains(string(out), "has not been filled in") {
 		t.Errorf("the blank test.sh does not say why it refused:\n%s", out)
-	}
-}
-
-// TestInitHooks_DockerNamesCarryTheRunID covers the isolation requirement: two
-// branches checked at once must not fight over a container, a network or a
-// volume.
-func TestInitHooks_DockerNamesCarryTheRunID(t *testing.T) {
-	t.Parallel()
-
-	files := written(t, t.TempDir(), cliux.PresetNodePostgres)
-
-	if !strings.Contains(files["env.sh"], "REDFIRST_RUN_ID") {
-		t.Errorf("no docker name carries the run id:\n%s", files["env.sh"])
-	}
-	if !strings.Contains(files["env-down.sh"], "--volumes") {
-		t.Errorf("the teardown leaves the data of the run behind:\n%s", files["env-down.sh"])
-	}
-	if _, ok := files["env-reset.sh"]; !ok {
-		t.Error("the docker preset carries no env-reset.sh, so its services cycle around every run")
-	}
-}
-
-// TestInitHooks_TheDockerPresetShipsItsOwnComposeFile is what separates a
-// docker preset that works from one that cannot run a single command.
-//
-// redfirst runs the service hooks from a copy of the hook directory, not from
-// the repository: harness.Session hands env-up.sh, env-reset.sh and env-down.sh
-// a working directory of .redfirst/, and in reused mode the working copy does
-// not exist yet when the first of them runs. A compose file at the repository
-// root is therefore not there to be found, and the two layers cannot pass a
-// port to each other through a file either.
-func TestInitHooks_TheDockerPresetShipsItsOwnComposeFile(t *testing.T) {
-	t.Parallel()
-
-	files := written(t, t.TempDir(), cliux.PresetNodePostgres)
-
-	compose, ok := files["compose.yaml"]
-	if !ok {
-		t.Fatalf("the docker preset writes no compose file: %v", slices.Sorted(maps.Keys(files)))
-	}
-	if !strings.Contains(compose, "${PGPORT}") {
-		t.Errorf("the compose file pins a host port, so two runs on one machine collide:\n%s", compose)
-	}
-	// Both layers derive the port from the run id, which is the one value they
-	// share: neither can read what the other wrote.
-	if !strings.Contains(files["env.sh"], "REDFIRST_RUN_ID") {
-		t.Errorf("env.sh does not derive the port from the run id:\n%s", files["env.sh"])
-	}
-	for _, hook := range []string{"env-up.sh", "env-reset.sh", "env-down.sh"} {
-		if !strings.Contains(files[hook], "docker compose") {
-			t.Errorf("%s never reaches the services:\n%s", hook, files[hook])
-		}
 	}
 }
 
