@@ -8,12 +8,6 @@ inputs:
   version:
     description: The redfirst release to install, for example v0.2.0.
     required: true
-  sha256:
-    description: >
-      SHA256 of the linux/amd64 asset. Given, it is the pin; left out, the
-      download is checked against the checksums published with the same release.
-    required: false
-    default: ""
   base:
     description: The ref the diff is judged against. It is the source of the config, the hooks and the rules.
     required: false
@@ -30,23 +24,29 @@ inputs:
 runs:
   using: composite
   steps:
+    # The download is checked against the checksums published with the same
+    # release, which catches a truncated transfer rather than a compromised
+    # release. What pins the version here is the ref this action is used at,
+    # which belongs to a workflow file a human reviews. A workflow that wants
+    # the checksum in its own text uses `redfirst init --ci` instead.
     - name: Install redfirst
       shell: bash
       env:
         VERSION: ${{ inputs.version }}
-        SHA256: ${{ inputs.sha256 }}
       run: |
         set -eu
-        asset="redfirst_${VERSION#v}_linux_amd64.tar.gz"
+        case "$RUNNER_OS/$RUNNER_ARCH" in
+          Linux/X64) platform=linux_amd64 ;;
+          Linux/ARM64) platform=linux_arm64 ;;
+          macOS/ARM64) platform=darwin_arm64 ;;
+          *) echo "redfirst publishes no binary for $RUNNER_OS/$RUNNER_ARCH" >&2; exit 1 ;;
+        esac
+        asset="redfirst_${VERSION#v}_${platform}.tar.gz"
         release="https://github.com/timhartmann7/redfirst/releases/download/${VERSION}"
         cd "$RUNNER_TEMP"
         curl --fail --silent --show-error --location --output "$asset" "$release/$asset"
-        if [ -n "$SHA256" ]; then
-          printf '%s  %s\n' "$SHA256" "$asset" | sha256sum --check --strict -
-        else
-          curl --fail --silent --show-error --location --output checksums.txt "$release/checksums.txt"
-          grep " $asset\$" checksums.txt | sha256sum --check --strict -
-        fi
+        curl --fail --silent --show-error --location --output checksums.txt "$release/checksums.txt"
+        grep " $asset\$" checksums.txt | shasum --algorithm 256 --check --strict -
         tar --extract --gzip --file "$asset" redfirst
 
     - name: Verify the diff
