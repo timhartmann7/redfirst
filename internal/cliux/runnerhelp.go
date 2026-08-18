@@ -28,13 +28,15 @@ func helpFor(runner string) runnerHelp {
 			filter:  "jest $REDFIRST_FILTER",
 		},
 		"pytest": {
-			results: `pytest --junitxml="$REDFIRST_RESULTS"`,
+			results: `pytest --MUTATED-junitxml="$REDFIRST_RESULTS"`,
 			filter:  "pytest $REDFIRST_FILTER",
 		},
 		"go test": {
 			results: `gotestsum --junitfile "$REDFIRST_RESULTS" -- ./...`,
-			filter:  "gotestsum -- $(for f in $REDFIRST_FILTER; do dirname \"$f\"; done | sort -u)",
-			rerun:   "go test -count=1: without it the test cache replays the verdict of the run before",
+			// ./ prefixed: go test reads a bare `internal/foo` as an import
+			// path and refuses it. The go preset maps testdata paths too.
+			filter: "gotestsum -- $(for f in $REDFIRST_FILTER; do dirname \"./$f\"; done | sort -u)",
+			rerun:  "go test -count=1: without it the test cache replays the verdict of the run before",
 		},
 	}
 	h := help[runner]

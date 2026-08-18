@@ -217,9 +217,15 @@ func (d Doctor) rerunRow(ctx context.Context, first, second domain.Run, help run
 			"too short to tell a replayed result from the cost of starting a runner",
 		}}
 	case second.Took*rerunRatio < first.Took:
+		// Named as what was seen rather than as a verdict. A runner replaying
+		// its previous answer reads exactly like a compiler that was cold the
+		// first time, and nothing in a duration separates the two; what the
+		// reader can act on is that one of them is happening.
 		return row{key: key, values: []string{
-			fmt.Sprintf("replayed · %s, and %s does the same work in both", took, hookTest),
-			fmt.Sprintf("the %d red-green probes collapse into one, and a flaky test walks through",
+			"unexplained gap · " + took,
+			fmt.Sprintf("%s does the same work in both, so either a toolchain went warm or the runner "+
+				"replayed its answer", hookTest),
+			fmt.Sprintf("the second collapses the %d red-green probes into one, and a flaky test walks through",
 				d.Config.RedGreen.ProbeRuns),
 			"fix: " + help.rerun,
 		}}
