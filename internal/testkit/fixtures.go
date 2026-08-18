@@ -73,9 +73,9 @@ func HookedFix(t *testing.T) *Repo {
 	r := NewRepo(t)
 	writeCleanFixBase(r)
 	r.Write("redfirst.toml", hookedFixConfig)
-	r.Write(".redfirst/env-up.sh", "#!/bin/sh\n")
-	r.Write(".redfirst/test.sh", "#!/bin/sh\n")
-	r.Write(".redfirst/env-down.sh", "#!/bin/sh\n")
+	r.WriteScript(".redfirst/env-up.sh", "#!/bin/sh\n")
+	r.WriteScript(".redfirst/test.sh", "#!/bin/sh\n")
+	r.WriteScript(".redfirst/env-down.sh", "#!/bin/sh\n")
 	r.Commit("feat: add the order total and the redfirst hooks")
 
 	r.Branch(FixtureHead)
