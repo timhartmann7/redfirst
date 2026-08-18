@@ -9,10 +9,12 @@ import (
 
 	"github.com/timhartmann7/redfirst/internal/cliux"
 	"github.com/timhartmann7/redfirst/internal/gitx"
+	"github.com/timhartmann7/redfirst/internal/harness"
 )
 
 type initFlags struct {
 	repo   string
+	hooks  string
 	ci     bool
 	config bool
 }
@@ -49,6 +51,16 @@ func initRepo(ctx context.Context, args []string, stdout, stderr io.Writer) erro
 		}
 		written = append(written, path)
 	}
+	if f.hooks != "" {
+		preset, paths, err := cliux.InitHooks(repo.Dir(), cliux.Preset(f.hooks))
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(stdout, "preset %s\n", preset); err != nil {
+			return err
+		}
+		written = append(written, paths...)
+	}
 
 	for _, path := range written {
 		if _, err := fmt.Fprintf(stdout, "wrote %s\n", path); err != nil {
@@ -66,13 +78,15 @@ func parseInitFlags(args []string, stderr io.Writer) (initFlags, error) {
 	fs.StringVar(&f.repo, "repo", ".", "path to the git repository")
 	fs.BoolVar(&f.ci, "ci", false, "generate "+cliux.WorkflowPath+" with a pinned version and SHA256")
 	fs.BoolVar(&f.config, "config", false, "generate "+cliux.ConfigPath+" from the built-in defaults, with comments")
+	fs.StringVar(&f.hooks, "hooks", "",
+		"drop hook templates into "+harness.HooksDir+"/: "+cliux.PresetNames())
 
 	if err := fs.Parse(args); err != nil {
 		return initFlags{}, err
 	}
-	if !f.ci && !f.config {
+	if !f.ci && !f.config && f.hooks == "" {
 		fs.Usage()
-		return initFlags{}, errors.New("nothing to generate: pass --ci, --config or both")
+		return initFlags{}, errors.New("nothing to generate: pass --ci, --config, --hooks or several")
 	}
 	return f, nil
 }
