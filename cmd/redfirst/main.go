@@ -13,6 +13,11 @@ import (
 	"github.com/timhartmann7/redfirst/internal/domain"
 )
 
+// configPath is where the rules come from for the commands that take no
+// --config flag: section 5 of the spec gives one to verify alone, and the rules
+// live at the root of the base ref either way.
+const configPath = "redfirst.toml"
+
 func main() {
 	os.Exit(dispatch())
 }
@@ -49,6 +54,10 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return verify(ctx, args[1:], stdout, stderr)
 	case "audit":
 		return auditHistory(ctx, args[1:], stdout, stderr)
+	case "explain":
+		return explainRules(ctx, args[1:], stdout, stderr)
+	case "init":
+		return initRepo(ctx, args[1:], stdout, stderr)
 	case "version":
 		_, err := fmt.Fprintln(stdout, domain.Version)
 		return err
@@ -65,6 +74,8 @@ func usage(w io.Writer) error {
 
   verify    judge one diff
   audit     apply the static gates to the history already merged
+  init      generate the CI workflow and the config
+  explain   print the rules a verify run would apply
   version   print the redfirst version
 
 Run `+"`redfirst verify -h`"+` for the flags.

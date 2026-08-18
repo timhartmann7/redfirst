@@ -58,6 +58,14 @@ type FileChange struct {
 	Binary bool
 	// Generated marks linguist-generated in .gitattributes at the base ref.
 	Generated bool
+	// Mode and Object are what a git tree entry holds about the file on head,
+	// printed by `git diff --raw`: six octal digits and an object id, both all
+	// zeroes where the file is gone. An object id names content exactly and the
+	// mode carries the rest, the executable bit above all. Together they are
+	// what the digests the report publishes are built from: a fix that only
+	// makes a script executable is a different patch from the one that did not.
+	Mode   string
+	Object string
 	// AddedLines is what the diff added, in file order, without the leading
 	// plus. Only added lines travel: a gate judges what the diff introduced,
 	// and the lines it left alone were never the agent's doing. Empty for a

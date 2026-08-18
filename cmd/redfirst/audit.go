@@ -11,11 +11,6 @@ import (
 	"github.com/timhartmann7/redfirst/internal/gitx"
 )
 
-// auditConfigPath is where the rules come from. The audit takes no --config
-// flag: section 5 of the spec gives it none, and the rules live at the root of
-// the base ref either way.
-const auditConfigPath = "redfirst.toml"
-
 type auditFlags struct {
 	repo   string
 	base   string
@@ -39,7 +34,7 @@ func auditHistory(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	if err != nil {
 		return err
 	}
-	cfg, _, err := config.Load(ctx, repo, f.base, auditConfigPath)
+	cfg, _, err := config.Load(ctx, repo, f.base, configPath)
 	if err != nil {
 		return err
 	}

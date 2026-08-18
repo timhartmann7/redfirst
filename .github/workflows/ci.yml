@@ -25,3 +25,42 @@ jobs:
       # needs a stored baseline and waits for the release slice, because a
       # shared runner's timings would otherwise fail a green branch.
       - run: make bench
+      # Cross-compilation and the 15 MB budget are release properties, and a
+      # release is the worst place to learn one broke. Building twice checks the
+      # third one: a release publishes the checksum of what it built, and a
+      # checksum nobody can reproduce pins nothing.
+      - name: Build the release artifacts twice
+        run: |
+          set -eu
+          make dist
+          cp dist/checksums.txt "$RUNNER_TEMP/checksums.first"
+          make dist
+          diff "$RUNNER_TEMP/checksums.first" dist/checksums.txt
+
+  # Dogfooding, in warn mode until S8: redfirst judges every pull request
+  # against this repository's own rules and reports without blocking.
+  #
+  # The binary comes off the base branch rather than out of the branch under
+  # judgement. That is the product thesis applied to ourselves: a judge built
+  # from head is a judge the diff could have rewritten.
+  redfirst:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The diff runs from the merge base, so the history both refs share
+          # has to be in the clone.
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Judge our own diff
+        continue-on-error: true
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -eu
+          git worktree add "$RUNNER_TEMP/base" "origin/$BASE_REF"
+          (cd "$RUNNER_TEMP/base" && go build -o "$RUNNER_TEMP/redfirst" ./cmd/redfirst)
+          "$RUNNER_TEMP/redfirst" verify --repo . --base "origin/$BASE_REF" --head HEAD

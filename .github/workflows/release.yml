@@ -1,0 +1,55 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      # Publishing the release is the one thing this workflow writes.
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      # A tag is not a promise on its own: nothing gets published from a red
+      # tree, and the checksums below describe a build that passed.
+      - run: make check
+
+      - name: Cross-compile the artifacts
+        run: make dist VERSION="$GITHUB_REF_NAME"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            dist/*.tar.gz dist/checksums.txt
+
+      # A binary cannot carry the checksum of an artifact that contains it, so
+      # the pin `redfirst init --ci` writes lands one release later. This step
+      # prints what to record; a human commits it, the way every other change to
+      # what judges a repository goes through a human.
+      - name: The pin for the next release
+        run: |
+          set -eu
+          asset="redfirst_${GITHUB_REF_NAME#v}_linux_amd64.tar.gz"
+          sha=$(awk -v asset="$asset" '$2 == asset { print $1 }' dist/checksums.txt)
+          {
+            echo "Record this in internal/cliux/workflow.go, so the next release"
+            echo "generates a workflow that installs this one:"
+            echo
+            echo '```go'
+            echo "    pinnedVersion = \"$GITHUB_REF_NAME\""
+            echo "    pinnedSHA256  = \"$sha\""
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

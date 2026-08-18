@@ -52,7 +52,7 @@ func (r *Repo) readAddedLines(ctx context.Context, from, to string, files []doma
 //   - --submodule=short answers `diff.submodule`. Under `log` a moved pointer
 //     prints no file header at all, and under `diff` it prints one per file
 //     changed inside the submodule: either way the patch stops lining up with
-//     --name-status, and one file's lines land under another file's name.
+//     the raw diff, and one file's lines land under another file's name.
 func patchArgs(from, to string) []string {
 	return []string{
 		"--attr-source=" + from,
@@ -62,7 +62,7 @@ func patchArgs(from, to string) []string {
 	}
 }
 
-// patch reads one `git diff --unified=0` stream onto the files --name-status
+// patch reads one `git diff --unified=0` stream onto the files the raw diff
 // already produced.
 type patch struct {
 	files []domain.FileChange
@@ -81,7 +81,7 @@ func (p *patch) parse(s *bufio.Scanner) error {
 		line := s.Text()
 		switch {
 		case strings.HasPrefix(line, fileHeader):
-			// A type change prints twice under a single --name-status record:
+			// A type change prints twice under a single raw diff record:
 			// git writes the old symlink out as a deletion and the new regular
 			// file as an addition, both under the same header. Two files never
 			// share a header, since no two entries of one diff name the same
@@ -93,7 +93,7 @@ func (p *patch) parse(s *bufio.Scanner) error {
 			p.header = line
 			p.current++
 			if p.current >= len(p.files) {
-				return fmt.Errorf("%w: git diff prints more files than --name-status did", domain.ErrInternal)
+				return fmt.Errorf("%w: git diff prints more files than the raw diff did", domain.ErrInternal)
 			}
 		case strings.HasPrefix(line, hunkHeader):
 			if err := p.readHunk(s, line); err != nil {
@@ -190,7 +190,7 @@ func parseRange(field string, sign byte) (start, count int, err error) {
 // another file's lines and a refusal would name the wrong path.
 func (p *patch) check() error {
 	if p.current != len(p.files)-1 {
-		return fmt.Errorf("%w: git diff prints %d files, --name-status printed %d",
+		return fmt.Errorf("%w: git diff prints %d files, the raw diff printed %d",
 			domain.ErrInternal, p.current+1, len(p.files))
 	}
 	for _, f := range p.files {

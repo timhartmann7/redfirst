@@ -1,0 +1,73 @@
+# The caller owns the checkout: pass fetch-depth: 0 to actions/checkout. The
+# diff runs from the merge base of the two refs, and a shallow clone carries no
+# merge base to run from.
+name: redfirst
+description: Judge the diff of a pull request against the rules on its base branch.
+
+inputs:
+  version:
+    description: The redfirst release to install, for example v0.2.0.
+    required: true
+  base:
+    description: The ref the diff is judged against. It is the source of the config, the hooks and the rules.
+    required: false
+    default: ""
+  head:
+    description: The ref under judgement.
+    required: false
+    default: HEAD
+  args:
+    description: Further flags for `redfirst verify`, such as --report json --out report.json.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    # The download is checked against the checksums published with the same
+    # release, which catches a truncated transfer rather than a compromised
+    # release. What pins the version here is the ref this action is used at,
+    # which belongs to a workflow file a human reviews. A workflow that wants
+    # the checksum in its own text uses `redfirst init --ci` instead.
+    - name: Install redfirst
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -eu
+        case "$RUNNER_OS/$RUNNER_ARCH" in
+          Linux/X64) platform=linux_amd64 ;;
+          Linux/ARM64) platform=linux_arm64 ;;
+          macOS/ARM64) platform=darwin_arm64 ;;
+          *) echo "redfirst publishes no binary for $RUNNER_OS/$RUNNER_ARCH" >&2; exit 1 ;;
+        esac
+        asset="redfirst_${VERSION#v}_${platform}.tar.gz"
+        release="https://github.com/timhartmann7/redfirst/releases/download/${VERSION}"
+        cd "$RUNNER_TEMP"
+        curl --fail --silent --show-error --location --output "$asset" "$release/$asset"
+        curl --fail --silent --show-error --location --output checksums.txt "$release/checksums.txt"
+        grep " $asset\$" checksums.txt | shasum --algorithm 256 --check --strict -
+        tar --extract --gzip --file "$asset" redfirst
+
+    - name: Verify the diff
+      shell: bash
+      env:
+        # The refs reach the shell through the environment rather than through
+        # an expression: a branch name is somebody else's text, and `run:`
+        # would execute it.
+        BASE_REF: ${{ inputs.base }}
+        HEAD_REF: ${{ inputs.head }}
+        ARGS: ${{ inputs.args }}
+        DEFAULT_BASE: ${{ github.base_ref }}
+      run: |
+        set -eu
+        base="$BASE_REF"
+        if [ -z "$base" ]; then
+          if [ -z "$DEFAULT_BASE" ]; then
+            echo "no base ref: this event carries none, so pass the base input" >&2
+            exit 1
+          fi
+          base="origin/$DEFAULT_BASE"
+        fi
+        # shellcheck disable=SC2086 -- args is a flag list and has to split.
+        "$RUNNER_TEMP/redfirst" verify --base "$base" --head "$HEAD_REF" $ARGS

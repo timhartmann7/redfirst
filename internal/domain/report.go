@@ -1,7 +1,9 @@
 package domain
 
-// Version is the redfirst release. S5 replaces it at link time.
-const Version = "0.1.0"
+// Version is the redfirst release. The release build stamps it through
+// -ldflags -X, which is why it is a var; nothing assigns it at runtime, so two
+// runs of one binary still report the same version.
+var Version = "0.1.0"
 
 // SchemaVersion is the report contract in schema/report.v1.json. Adding a
 // field needs no bump; renaming or removing one does.
@@ -52,11 +54,18 @@ type Report struct {
 	Tier            int    `json:"tier"`
 	// ConfigSource is "defaults" or "base:<path>", so the orchestrator sees
 	// whether project rules or built-in ones judged the diff.
-	ConfigSource string       `json:"config_source"`
-	Base         string       `json:"base"`
-	Head         string       `json:"head"`
-	EnvMode      string       `json:"env_mode,omitempty"`
-	ProbeRuns    int          `json:"probe_runs,omitempty"`
+	ConfigSource string `json:"config_source"`
+	Base         string `json:"base"`
+	Head         string `json:"head"`
+	EnvMode      string `json:"env_mode,omitempty"`
+	ProbeRuns    int    `json:"probe_runs,omitempty"`
+	// DiffDigest names the patch under judgement, BaseProbeKey the base probe
+	// of red-green. The core computes both and reads neither: the orchestrator
+	// deduplicates attempts with the first, and the second exists so that
+	// months of logs can answer whether a cache would have paid for itself.
+	// BaseProbeKey stays empty where no base probe would run.
+	DiffDigest   string       `json:"diff_digest,omitempty"`
+	BaseProbeKey string       `json:"base_probe_key,omitempty"`
 	Verdict      Verdict      `json:"verdict"`
 	ExitCode     int          `json:"exit_code"`
 	Diff         Stats        `json:"diff"`

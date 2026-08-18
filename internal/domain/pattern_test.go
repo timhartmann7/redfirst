@@ -133,3 +133,41 @@ func TestRegexSet_RawKeepsExpressionsAsWritten(t *testing.T) {
 		t.Errorf("Raw() = %v, want %v", set.Raw(), raw)
 	}
 }
+
+// TestPatternSet_MatchPatternNamesTheGlobThatDecided covers what `redfirst
+// explain` prints: the rule a path fell under, not the bare fact that it did.
+func TestPatternSet_MatchPatternNamesTheGlobThatDecided(t *testing.T) {
+	t.Parallel()
+
+	set, err := domain.NewPatternSet([]string{"CLAUDE.md", "src/**", ".github/workflows/*.yml"})
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{name: "a name pattern matches at any depth", path: "docs/CLAUDE.md", want: "CLAUDE.md"},
+		{name: "the first matching pattern wins", path: "src/lib/total.ts", want: "src/**"},
+		{name: "a rooted pattern names itself", path: ".github/workflows/ci.yml", want: ".github/workflows/*.yml"},
+		{name: "a path outside every list names nothing", path: "README.md", want: ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, ok := set.MatchPattern(tc.path)
+			if got != tc.want {
+				t.Errorf("MatchPattern(%q) = %q, want %q", tc.path, got, tc.want)
+			}
+			if ok != (tc.want != "") {
+				t.Errorf("MatchPattern(%q) reported %v for pattern %q", tc.path, ok, got)
+			}
+			if set.Match(tc.path) != ok {
+				t.Errorf("Match(%q) disagrees with MatchPattern", tc.path)
+			}
+		})
+	}
+}
