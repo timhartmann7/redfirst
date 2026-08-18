@@ -1,6 +1,8 @@
-// Package cliux renders the commands that set a repository up and say what its
-// rules are. It executes nothing and judges nothing: `init` writes the files a
-// project needs, `explain` prints the rule set a verify run would apply.
+// Package cliux holds the commands that set a repository up and say where it
+// stands. None of them judges a diff: `init` writes the files a project needs,
+// `explain` prints the rule set a verify run would apply, and `doctor` reports
+// what works now and what blocks the next tier. Only doctor executes anything,
+// and only the project's own hooks.
 package cliux
 
 import (
