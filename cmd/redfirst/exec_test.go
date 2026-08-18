@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/timhartmann7/redfirst/internal/domain"
@@ -79,5 +81,60 @@ func TestVerify_NoHooksLeavesCasesModeDowngradedAndTheVerdictValid(t *testing.T)
 	}
 	if configWarning(rep) == "" {
 		t.Error("cases was downgraded without a line in the report")
+	}
+}
+
+// TestVerify_TwoTierTwoRunsProduceIdenticalJSON is invariant 1 where it costs
+// something to hold: the environment comes up twice, the hooks run twice, and
+// the verdict still may not move. A run directory named after a temporary
+// directory, a probe index, a container name, none of it may reach the report.
+func TestVerify_TwoTierTwoRunsProduceIdenticalJSON(t *testing.T) {
+	t.Parallel()
+
+	repo := testkit.HookedFix(t)
+	first := tierTwoJSON(t, repo.Dir)
+
+	if second := tierTwoJSON(t, repo.Dir); first != second {
+		t.Errorf("two tier 2 runs differ\n--- first ---\n%s\n--- second ---\n%s", first, second)
+	}
+}
+
+// tierTwoJSON is the report with the one field that is allowed to move removed.
+func tierTwoJSON(t *testing.T, repoDir string) string {
+	t.Helper()
+
+	rep := runReport(t, repoDir)
+	rep.Timings = domain.Timings{}
+
+	stable, err := json.MarshalIndent(rep, "", "  ")
+	if err != nil {
+		t.Fatalf("re-encode report: %v", err)
+	}
+	return string(stable)
+}
+
+// TestVerify_TierTwoWritesNothingIntoTheRepositoryUnderJudgement is invariant 6
+// where the run has the most reason to break it: two working copies get built
+// and somebody else's test scripts execute. Only the report, stdout and stderr
+// may move, and a worktree recorded under .git/ would survive a killed run.
+func TestVerify_TierTwoWritesNothingIntoTheRepositoryUnderJudgement(t *testing.T) {
+	t.Parallel()
+
+	repo := testkit.HookedFix(t)
+	before := repo.Git("status", "--porcelain=v1", "--untracked-files=all")
+	head := repo.Head()
+
+	if rep := runReport(t, repo.Dir); rep.Tier != 2 {
+		t.Fatalf("tier = %d, want the run to have brought the environment up", rep.Tier)
+	}
+
+	if after := repo.Git("status", "--porcelain=v1", "--untracked-files=all"); after != before {
+		t.Errorf("the working tree changed: %q, was %q", after, before)
+	}
+	if after := repo.Head(); after != head {
+		t.Errorf("HEAD moved to %s, was %s", after, head)
+	}
+	if got := repo.Git("worktree", "list"); strings.Count(got, "\n") != 0 {
+		t.Errorf("the run left a worktree registered:\n%s", got)
 	}
 }
