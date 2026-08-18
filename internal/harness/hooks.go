@@ -36,7 +36,6 @@ const (
 	// grandchild holding a pipe open cannot keep the run alive.
 	killGrace = 2 * time.Second
 	// outputTail is how much of a hook's output the failure message carries.
-	// The end of the output is where the reason sits.
 	outputTail = 4 << 10
 )
 
@@ -47,12 +46,15 @@ const sourceThenExec = `. "$1" || exit 1; shift; exec "$@"`
 
 // hooks are the scripts of the base ref, copied into the run directory.
 type hooks struct {
-	dir   string
-	env   string
-	up    string
-	reset string
-	test  string
-	down  string
+	dir string
+	// output is where a hook's own output goes while it runs. It is the run
+	// directory, so it disappears with everything else at teardown.
+	output string
+	env    string
+	up     string
+	reset  string
+	test   string
+	down   string
 }
 
 // discover reads what the export produced.
@@ -60,8 +62,8 @@ type hooks struct {
 // The three required scripts have to be there. A base ref that carries
 // .redfirst/ says the project meant tier 2, so half a hook set is a broken
 // harness, exit code 2, rather than a capability that quietly goes missing.
-func discover(dir string) (hooks, error) {
-	h := hooks{dir: dir}
+func discover(dir, output string) (hooks, error) {
+	h := hooks{dir: dir, output: output}
 	executed := []struct {
 		name     string
 		into     *string
@@ -141,22 +143,35 @@ type outcome struct {
 // exited zero; a non-zero exit is an answer rather than a failure, and only a
 // script that could not run at all, or one the deadline killed, is an error.
 func (h hooks) run(ctx context.Context, script, dir string, env []string) (outcome, error) {
-	var out tail
-	cmd := h.command(ctx, script, dir, env)
-	cmd.Stdout = &out
-	cmd.Stderr = &out
+	out, err := os.CreateTemp(h.output, "output-")
+	if err != nil {
+		return outcome{}, fmt.Errorf("%w: create the output file of %s/%s: %w",
+			domain.ErrHarness, HooksDir, filepath.Base(script), err)
+	}
+	defer func() {
+		_ = out.Close()
+		_ = os.Remove(out.Name())
+	}()
 
-	err := cmd.Run()
+	cmd := h.command(ctx, script, dir, env)
+	// A file rather than a pipe. os/exec hands a file straight to the child and
+	// waits for nobody, while a pipe makes it wait for every holder of the
+	// write end to let go: a service that env-up.sh started in the background
+	// inherits that end, and the wait would outlive the hook that opened it.
+	cmd.Stdout = out
+	cmd.Stderr = out
+
+	err = cmd.Run()
 	if err == nil {
-		return outcome{ok: true, output: out.report()}, nil
+		return outcome{ok: true, output: report(out)}, nil
 	}
 
 	var exit *exec.ExitError
 	if errors.As(err, &exit) && ctx.Err() == nil {
-		return outcome{output: out.report()}, nil
+		return outcome{output: report(out)}, nil
 	}
 	return outcome{}, fmt.Errorf("%w: %s/%s: %w%s",
-		domain.ErrHarness, HooksDir, filepath.Base(script), err, out.report())
+		domain.ErrHarness, HooksDir, filepath.Base(script), err, report(out))
 }
 
 // mustRun executes a hook whose whole contract is exit code 0. env-up.sh,
@@ -188,8 +203,8 @@ func (h hooks) command(ctx context.Context, script, dir string, env []string) *e
 		// The leader dies through os.Process, which is the one call that cannot
 		// land on a pid the operating system has already handed to somebody
 		// else: it reports ErrProcessDone once Wait has reaped the child, and
-		// os/exec reads that as "it finished on its own". Only once that signal
-		// lands do we know the group id still names our children, and a
+		// os/exec reads that as "it finished on its own". Only once that
+		// signal lands do we know the group id still names our children, and a
 		// deadline has to reach them: killing the script alone leaves the
 		// containers and the test runner it started behind.
 		if err := cmd.Process.Kill(); err != nil {
@@ -201,30 +216,22 @@ func (h hooks) command(ctx context.Context, script, dir string, env []string) *e
 	return cmd
 }
 
-// tail keeps the last outputTail bytes written to it. A suite printing a
-// megabyte must not land in memory whole, and the end is where the failure is.
-type tail struct {
-	buf []byte
-}
-
-func (t *tail) Write(p []byte) (int, error) {
-	n := len(p)
-	if len(p) > outputTail {
-		p = p[len(p)-outputTail:]
-	}
-	t.buf = append(t.buf, p...)
-	if len(t.buf) > outputTail {
-		t.buf = t.buf[len(t.buf)-outputTail:]
-	}
-	return n, nil
-}
-
-// report is the hook's own output, ready to follow an error message. A hook
-// that failed silently adds nothing.
-func (t *tail) report() string {
-	out := strings.TrimSpace(string(t.buf))
-	if out == "" {
+// report is the tail of what a hook printed, ready to follow an error message.
+// The last bytes rather than all of them: a suite prints megabytes, and the end
+// is where the reason sits. A hook that failed silently adds nothing.
+func report(out *os.File) string {
+	info, err := out.Stat()
+	if err != nil {
 		return ""
 	}
-	return "\n" + out
+	at := max(info.Size()-outputTail, 0)
+	buf := make([]byte, min(info.Size(), int64(outputTail)))
+	if _, err := out.ReadAt(buf, at); err != nil {
+		return ""
+	}
+	text := strings.TrimSpace(string(buf))
+	if text == "" {
+		return ""
+	}
+	return "\n" + text
 }

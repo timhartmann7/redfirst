@@ -40,8 +40,9 @@ type Source interface {
 // Options are the choices the CLI passes in.
 type Options struct {
 	Source Source
-	// Base is the ref the hooks come from. All code that judges comes from
-	// base, and the hooks judge.
+	// Base is where the hooks come from. All code that judges comes from base,
+	// and the hooks judge. Pass a resolved commit rather than a branch name: a
+	// ref that moves mid-run would hand two phases two different rule sets.
 	Base string
 	// WorkDir is where the run directory goes; empty means the system temp.
 	WorkDir string
@@ -87,7 +88,7 @@ func Open(ctx context.Context, opts Options) (s *Session, err error) {
 	if err = opts.Source.Export(ctx, opts.Base+":"+HooksDir, hooksDir); err != nil {
 		return nil, fmt.Errorf("cannot read %s out of %s: %w", HooksDir, opts.Base, err)
 	}
-	if s.hooks, err = discover(hooksDir); err != nil {
+	if s.hooks, err = discover(hooksDir, dir); err != nil {
 		return nil, err
 	}
 
