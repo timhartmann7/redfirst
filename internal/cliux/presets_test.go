@@ -1,6 +1,7 @@
 package cliux_test
 
 import (
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -78,6 +79,13 @@ func TestInitHooks_EveryPresetWritesARunnableHookSet(t *testing.T) {
 				info, err := os.Stat(full)
 				if err != nil {
 					t.Fatalf("stat %s: %v", name, err)
+				}
+				if !strings.HasSuffix(name, ".sh") {
+					// Data a hook reads rather than a hook. Nothing executes it.
+					if info.Mode().Perm()&0o111 != 0 {
+						t.Errorf("%s is executable and is not a script", name)
+					}
+					continue
 				}
 				if info.Mode().Perm()&0o111 == 0 {
 					t.Errorf("%s is not executable: %v", name, info.Mode().Perm())
@@ -200,6 +208,39 @@ func TestInitHooks_DockerNamesCarryTheRunID(t *testing.T) {
 	}
 	if _, ok := files["env-reset.sh"]; !ok {
 		t.Error("the docker preset carries no env-reset.sh, so its services cycle around every run")
+	}
+}
+
+// TestInitHooks_TheDockerPresetShipsItsOwnComposeFile is what separates a
+// docker preset that works from one that cannot run a single command.
+//
+// redfirst runs the service hooks from a copy of the hook directory, not from
+// the repository: harness.Session hands env-up.sh, env-reset.sh and env-down.sh
+// a working directory of .redfirst/, and in reused mode the working copy does
+// not exist yet when the first of them runs. A compose file at the repository
+// root is therefore not there to be found, and the two layers cannot pass a
+// port to each other through a file either.
+func TestInitHooks_TheDockerPresetShipsItsOwnComposeFile(t *testing.T) {
+	t.Parallel()
+
+	files := written(t, t.TempDir(), cliux.PresetNodePostgres)
+
+	compose, ok := files["compose.yaml"]
+	if !ok {
+		t.Fatalf("the docker preset writes no compose file: %v", slices.Sorted(maps.Keys(files)))
+	}
+	if !strings.Contains(compose, "${PGPORT}") {
+		t.Errorf("the compose file pins a host port, so two runs on one machine collide:\n%s", compose)
+	}
+	// Both layers derive the port from the run id, which is the one value they
+	// share: neither can read what the other wrote.
+	if !strings.Contains(files["env.sh"], "REDFIRST_RUN_ID") {
+		t.Errorf("env.sh does not derive the port from the run id:\n%s", files["env.sh"])
+	}
+	for _, hook := range []string{"env-up.sh", "env-reset.sh", "env-down.sh"} {
+		if !strings.Contains(files[hook], "docker compose") {
+			t.Errorf("%s never reaches the services:\n%s", hook, files[hook])
+		}
 	}
 }
 
