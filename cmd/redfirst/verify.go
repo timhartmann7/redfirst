@@ -108,19 +108,14 @@ func judge(ctx context.Context, f verifyFlags) ([]domain.GateResult, domain.Repo
 
 	env := runner.Env{HooksPresent: hooks, NoHooks: f.noHooks}
 	caps := runner.Capabilities(env, diff, runner.HarnessProbe{}, cfg)
-
-	var warnings []domain.Warning
-	if !caps.Has(domain.CapHooks) {
-		for _, key := range config.DowngradeCasesWithoutHooks(&cfg) {
-			warnings = append(warnings, domain.Warning{
-				Kind: domain.WarnConfig,
-				Detail: fmt.Sprintf("%s %q needs hooks, downgraded to %q",
-					key, domain.ImmutabilityCases, domain.ImmutabilityAppendOnly),
-			})
-		}
-	}
+	warnings := downgradeWarnings(&cfg, caps)
 
 	only, err := parseGateIDs(f.gates)
+	if err != nil {
+		return nil, domain.Report{}, err
+	}
+	in := domain.Input{Diff: diff, Config: cfg}
+	probeKey, err := baseProbeKey(ctx, repo, f.base, in, caps)
 	if err != nil {
 		return nil, domain.Report{}, err
 	}
@@ -129,7 +124,27 @@ func judge(ctx context.Context, f verifyFlags) ([]domain.GateResult, domain.Repo
 		return nil, domain.Report{}, err
 	}
 
-	return results, assemble(diff, cfg, source, caps, results, warnings), nil
+	rep := assemble(diff, cfg, source, caps, results, warnings)
+	rep.DiffDigest = diffDigest(diff)
+	rep.BaseProbeKey = probeKey
+	return results, rep, nil
+}
+
+// downgradeWarnings lowers the modes that need hooks and says so in the report.
+// The downgrade moves toward strictness, and it may not happen quietly.
+func downgradeWarnings(cfg *domain.Config, caps runner.CapSet) []domain.Warning {
+	if caps.Has(domain.CapHooks) {
+		return nil
+	}
+	var warnings []domain.Warning
+	for _, key := range config.DowngradeCasesWithoutHooks(cfg) {
+		warnings = append(warnings, domain.Warning{
+			Kind: domain.WarnConfig,
+			Detail: fmt.Sprintf("%s %q needs hooks, downgraded to %q",
+				key, domain.ImmutabilityCases, domain.ImmutabilityAppendOnly),
+		})
+	}
+	return warnings
 }
 
 func assemble(
