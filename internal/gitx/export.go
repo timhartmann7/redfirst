@@ -13,17 +13,18 @@ import (
 // ref names a commit or a subtree of one (`<sha>:.redfirst`), whose contents
 // land at the root of dir.
 //
-// The tree travels through a temporary index, and both obvious alternatives are
-// closed to us:
+// What lands in dir is a checkout of the tree: git applies the same eol and
+// filter conversion it applies for a developer, which is the point, because the
+// tests that run here are the project's own. What it may not do is drop a file
+// or invent one, and that rules out both obvious alternatives:
 //
-//   - `git worktree add` records the checkout under .git/worktrees of the
-//     repository being judged, and invariant 6 leaves redfirst nothing to write
-//     there. A killed run would also leave that record behind.
 //   - `git archive` applies the export-ignore and export-subst attributes of
 //     the very tree it is archiving. One line of `.gitattributes` on the branch
-//     under judgement would drop a failing test out of the working copy or
-//     rewrite a file on its way in, and the suite would go green over a file
-//     nobody ran. A working copy has to be the tree, byte for byte.
+//     under judgement takes a failing test out of the working copy, and the
+//     suite goes green over a file nobody ran.
+//   - `git worktree add` records the checkout under .git/worktrees of the
+//     repository being judged, and invariant 6 leaves redfirst nothing to write
+//     there. A killed run would leave that record behind as well.
 //
 // Redirecting the index through GIT_INDEX_FILE keeps the repository untouched:
 // read-tree writes the index we hand it and nothing else.

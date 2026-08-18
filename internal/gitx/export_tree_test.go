@@ -93,10 +93,18 @@ func TestGitx_ExportKeepsAFileExportIgnoreWouldDrop(t *testing.T) {
 
 // TestGitx_ExportWritesNothingIntoTheRepository holds invariant 6 for the one
 // operation that has to create files somewhere.
+//
+// The exported ref is deliberately not the one the repository has checked out:
+// an export that wrote the repository's own index would leave every file of the
+// working tree reading as changed, which is what the status below would catch.
 func TestGitx_ExportWritesNothingIntoTheRepository(t *testing.T) {
 	t.Parallel()
 
 	r := exportable(t)
+	r.Branch(testkit.FixtureHead)
+	r.Write("src/order/total.js", "export const total = (i) => i.length\n")
+	r.Write("src/order/added.js", "export const added = true\n")
+	r.Commit("feat: count the items")
 	before := r.Git("rev-parse", "HEAD")
 
 	if err := openFixture(t, r).Export(t.Context(), testkit.FixtureBase, filepath.Join(t.TempDir(), "work")); err != nil {
