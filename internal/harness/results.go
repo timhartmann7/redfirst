@@ -2,6 +2,7 @@ package harness
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -70,9 +71,19 @@ func readResults(path string) ([]Case, error) {
 	return parseTAP(r)
 }
 
+// byteOrderMark opens a file some runners write on Windows. It is not
+// whitespace and it is not content, and leaving it in place would send a JUnit
+// file to the TAP reader, which would find nothing in it.
+var byteOrderMark = []byte{0xEF, 0xBB, 0xBF}
+
 // firstContent is the first byte that is not whitespace, or zero at the end of
 // an empty file.
 func firstContent(r *bufio.Reader) (byte, error) {
+	if mark, err := r.Peek(len(byteOrderMark)); err == nil && bytes.Equal(mark, byteOrderMark) {
+		if _, err := r.Discard(len(byteOrderMark)); err != nil {
+			return 0, fmt.Errorf("%w: reading the results of test.sh: %w", domain.ErrHarness, err)
+		}
+	}
 	for {
 		b, err := r.ReadByte()
 		if errors.Is(err, io.EOF) {

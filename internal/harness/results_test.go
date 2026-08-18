@@ -146,6 +146,19 @@ func TestResults_NothingToReadIsNotAFailure(t *testing.T) {
 	}
 }
 
+// TestResults_AByteOrderMarkDoesNotHideTheCases covers the mark some runners
+// write ahead of their xml. Read as content it is neither xml nor TAP, and the
+// run would come back with no cases at all.
+func TestResults_AByteOrderMarkDoesNotHideTheCases(t *testing.T) {
+	t.Parallel()
+
+	got := read(t, "\ufeff"+`<testsuite name="fake"><testcase classname="x.js" name="adds prices"/></testsuite>`)
+
+	if len(got) != 1 || got[0].Name != "adds prices" {
+		t.Errorf("cases = %v, want the one the file names", got)
+	}
+}
+
 // TestResults_BrokenXMLIsHarnessFailure separates the two: a file that opens as
 // xml claims to be results, and half a file means the runner died mid-write.
 func TestResults_BrokenXMLIsHarnessFailure(t *testing.T) {
