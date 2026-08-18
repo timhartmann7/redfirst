@@ -28,12 +28,20 @@ const (
 )
 
 // command builds a git invocation rooted at the repository. The child gets its
-// own process group and a Cancel that signals the group rather than the
-// leader: killing git alone would leave whatever it started running.
+// own process group, so a deadline reaches whatever git started rather than git
+// alone.
+//
+// The group only gets the signal once os.Process has agreed the leader is still
+// ours. os/exec may call Cancel after Wait has already reaped the child, and a
+// raw kill on the group id would then land on whichever process the operating
+// system handed that number to next.
 func (r *Repo) command(ctx context.Context, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", r.dir}, args...)...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
+		if err := cmd.Process.Kill(); err != nil {
+			return err
+		}
 		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	}
 	cmd.WaitDelay = killGrace

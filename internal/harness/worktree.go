@@ -2,7 +2,9 @@ package harness
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -89,6 +91,12 @@ func (w *Worktree) Run(ctx context.Context, filter []string) (res Result, err er
 	results := filepath.Join(s.dir, "results", fmt.Sprintf("%s-%d", w.phase, w.runs))
 	if mkErr := os.MkdirAll(filepath.Dir(results), 0o755); mkErr != nil {
 		return Result{}, fmt.Errorf("%w: create the results directory: %w", domain.ErrHarness, mkErr)
+	}
+	// A phase started again numbers its runs from one again, and a hook that
+	// dies before writing has to leave the run with nothing rather than with
+	// what the run before it wrote.
+	if rmErr := os.Remove(results); rmErr != nil && !errors.Is(rmErr, fs.ErrNotExist) {
+		return Result{}, fmt.Errorf("%w: clear %s: %w", domain.ErrHarness, results, rmErr)
 	}
 
 	run, err := s.hooks.run(ctx, s.hooks.test, w.dir, w.env(results, filter))

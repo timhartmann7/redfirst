@@ -109,6 +109,24 @@ func TestSession_FreshFlagRefusesToReuseServicesThatOfferAReset(t *testing.T) {
 	}
 }
 
+// TestSession_AServiceLeftRunningDoesNotHoldTheRunOpen covers what env-up.sh
+// is for: it starts services and returns, and the services outlive it. A hook
+// whose output went down a pipe would keep the run waiting for the last holder
+// of that pipe, which is the service itself.
+func TestSession_AServiceLeftRunningDoesNotHoldTheRunOpen(t *testing.T) {
+	t.Parallel()
+
+	set := recording()
+	set.up = "env-up-background.sh"
+	f := newFixture(t, set)
+	s := f.open(t, false)
+	defer closeSession(t, t.Context(), s)
+
+	if _, err := worktree(t, s, harness.PhaseBase, testkit.FixtureBase).Run(t.Context(), nil); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+}
+
 // TestSession_TearsTheEnvironmentDownAfterAPanic holds invariant 8 on the path
 // that loses the stack: a deferred Close is what makes teardown survive it.
 func TestSession_TearsTheEnvironmentDownAfterAPanic(t *testing.T) {

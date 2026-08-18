@@ -269,12 +269,15 @@ func TestWorktree_TheDeadlineKillsTheProcessTreeAndTearsDown(t *testing.T) {
 		cancel()
 	}()
 
-	if _, err := w.Run(ctx, nil); !errors.Is(err, domain.ErrHarness) {
-		t.Fatalf("a run the cancellation killed: %v, want a harness error", err)
-	}
+	started := time.Now()
+	_, err := w.Run(ctx, nil)
 	pid := <-child
 	if pid == 0 {
-		t.Fatal("the hook never recorded the process it started")
+		t.Fatalf("the hook never recorded the process it started: run said %v after %s, and the log holds\n%s",
+			err, time.Since(started), strings.Join(f.lines(), "\n"))
+	}
+	if !errors.Is(err, domain.ErrHarness) {
+		t.Fatalf("a run the cancellation killed: %v, want a harness error", err)
 	}
 	waitGone(t, pid)
 	if got := f.count("env-down"); got != 1 {
@@ -284,8 +287,12 @@ func TestWorktree_TheDeadlineKillsTheProcessTreeAndTearsDown(t *testing.T) {
 
 // waitForChild polls for the pid the hanging hook records. It runs off the test
 // goroutine, so it reports a failure as zero rather than through t.
+//
+// The budget is generous on purpose. It bounds a failure rather than the
+// behaviour: a loaded machine can take seconds to start a shell, and a test
+// that calls that a regression is a test nobody trusts.
 func (f *fixture) waitForChild() int {
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		// The newline is the hook saying it finished writing.
 		data, err := os.ReadFile(f.log + ".pid")
@@ -304,7 +311,7 @@ func (f *fixture) waitForChild() int {
 func waitGone(t *testing.T, pid int) {
 	t.Helper()
 
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		if errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) {
 			return

@@ -174,10 +174,8 @@ func (h hooks) mustRun(ctx context.Context, script, dir string, env []string) er
 	return nil
 }
 
-// command builds the invocation. The child gets a process group of its own and
-// a Cancel that signals the group: killing the script alone would leave the
-// containers, the database and the test runner it started behind, and that is a
-// bug rather than a detail.
+// command builds the invocation. The child gets a process group of its own, so
+// a deadline reaches everything the hook started rather than the script alone.
 func (h hooks) command(ctx context.Context, script, dir string, env []string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, script)
 	if h.env != "" {
@@ -187,6 +185,16 @@ func (h hooks) command(ctx context.Context, script, dir string, env []string) *e
 	cmd.Env = append(os.Environ(), env...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
+		// The leader dies through os.Process, which is the one call that cannot
+		// land on a pid the operating system has already handed to somebody
+		// else: it reports ErrProcessDone once Wait has reaped the child, and
+		// os/exec reads that as "it finished on its own". Only once that signal
+		// lands do we know the group id still names our children, and a
+		// deadline has to reach them: killing the script alone leaves the
+		// containers and the test runner it started behind.
+		if err := cmd.Process.Kill(); err != nil {
+			return err
+		}
 		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	}
 	cmd.WaitDelay = killGrace
