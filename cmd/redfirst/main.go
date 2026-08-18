@@ -47,6 +47,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	switch args[0] {
 	case "verify":
 		return verify(ctx, args[1:], stdout, stderr)
+	case "audit":
+		return auditHistory(ctx, args[1:], stdout, stderr)
 	case "version":
 		_, err := fmt.Fprintln(stdout, domain.Version)
 		return err
@@ -62,6 +64,7 @@ func usage(w io.Writer) error {
 	_, err := fmt.Fprint(w, `usage: redfirst <command> [flags]
 
   verify    judge one diff
+  audit     apply the static gates to the history already merged
   version   print the redfirst version
 
 Run `+"`redfirst verify -h`"+` for the flags.
