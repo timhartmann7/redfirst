@@ -36,11 +36,12 @@ func NewTestImmutability(cfg domain.Config) *TestImmutability {
 func (g *TestImmutability) ID() domain.GateID { return domain.GateTestImmutability }
 
 // Requires declares what the gate needs before the runner lets it speak. Mode
-// cases judges outcomes rather than lines, so it needs the case names from the
-// inventory run; the line-based modes read the diff alone.
+// cases judges outcomes rather than lines, so it needs the harness that
+// produces them and the case names its first run returned; the line-based modes
+// read the diff alone.
 func (g *TestImmutability) Requires() []domain.Capability {
 	if g.tests == domain.ImmutabilityCases || g.fixtures == domain.ImmutabilityCases {
-		return []domain.Capability{domain.CapDiff, domain.CapCaseNames}
+		return []domain.Capability{domain.CapDiff, domain.CapHooks, domain.CapCaseNames}
 	}
 	return []domain.Capability{domain.CapDiff}
 }
@@ -48,10 +49,11 @@ func (g *TestImmutability) Requires() []domain.Capability {
 // Run judges every file that existed at the merge base and belongs to one of
 // the two lists. Files the diff added are nobody's business here: writing a new
 // test is legal under every mode.
-func (g *TestImmutability) Run(_ context.Context, in domain.Input) (domain.GateResult, error) {
+func (g *TestImmutability) Run(ctx context.Context, in domain.Input) (domain.GateResult, error) {
 	lists := surfaces(in.Config)
 
 	var offences []offence
+	byOutcome := false
 	for _, f := range in.Diff.Files {
 		existing, ok := existingPath(f)
 		if !ok {
@@ -61,12 +63,23 @@ func (g *TestImmutability) Run(_ context.Context, in domain.Input) (domain.GateR
 		if !ok {
 			continue
 		}
-		if err := checkModes(lists, existing); err != nil {
-			return domain.GateResult{}, err
+		if primary.mode == domain.ImmutabilityCases {
+			// Mode cases judges the outcomes of one run rather than the lines
+			// of one file, so the check below answers for all of them at once.
+			byOutcome = true
+			continue
 		}
 		if o, broke := judge(f, existing, primary, lists); broke {
 			offences = append(offences, o)
 		}
+	}
+
+	if byOutcome {
+		outcomes, err := casesOffences(ctx, in)
+		if err != nil {
+			return domain.GateResult{}, err
+		}
+		offences = append(offences, outcomes...)
 	}
 	return verdict(in.Config.Tests.Immutability, offences), nil
 }
@@ -118,30 +131,6 @@ func claim(lists [2]surface, path string) (surface, bool) {
 		}
 	}
 	return surface{}, false
-}
-
-// checkModes refuses a mode this gate cannot apply, for every list that claimed
-// the file. Mode cases judges outcomes instead of lines and needs the case names
-// the harness produces, which the runner turns into a capability: arriving here
-// without them means the runner granted a capability that does not exist, and
-// that is our bug rather than the diff's.
-//
-// Checked where the modes are applied rather than once up front: a diff that
-// touches no test surface needs no mode, and refusing one over a rule the run
-// never reads would refuse a diff for nothing.
-func checkModes(lists [2]surface, existing string) error {
-	for _, s := range lists {
-		switch {
-		case !s.set.Match(existing):
-		case s.mode == domain.ImmutabilityStrict,
-			s.mode == domain.ImmutabilityAppendOnly,
-			s.mode == domain.ImmutabilityWarn:
-		default:
-			return fmt.Errorf("%w: %s = %q judges outcomes, and no case names reached the gate",
-				domain.ErrInternal, s.modeKey, s.mode)
-		}
-	}
-	return nil
 }
 
 // existingPath is the path the file had at the merge base, and whether it had
@@ -266,11 +255,16 @@ const (
 	kindEdited offenceKind = "edited"
 	// kindShortened is a file that lost lines under append-only.
 	kindShortened offenceKind = "shortened"
+	// kindRegressed is a case that survived onto head and stopped being green.
+	kindRegressed offenceKind = "regressed"
 )
 
-// offence is one file that broke the rule its mode sets.
+// offence is one file, or one case, that broke the rule its mode sets.
 type offence struct {
-	file   string
+	file string
+	// kase is the test case that broke the rule, under mode cases. The other
+	// modes judge a file and leave it empty.
+	kase   string
 	kind   offenceKind
 	mode   domain.Immutability
 	detail string
@@ -282,7 +276,7 @@ type offence struct {
 func verdict(tests domain.Immutability, offences []offence) domain.GateResult {
 	res := domain.GateResult{Status: domain.StatusPass}
 	for _, o := range offences {
-		res.Evidence = append(res.Evidence, domain.Evidence{File: o.file, Detail: o.detail})
+		res.Evidence = append(res.Evidence, domain.Evidence{File: o.file, Case: o.kase, Detail: o.detail})
 	}
 
 	mode := tests
@@ -291,10 +285,10 @@ func verdict(tests domain.Immutability, offences []offence) domain.GateResult {
 		res.Status = domain.StatusWarn
 		if worst.mode != domain.ImmutabilityWarn {
 			res.Status = domain.StatusFail
-			res.Remediation = domain.RemediationRevertPaths
+			res.Remediation = remediationFor(worst.mode)
 		}
 	}
-	res.Message = summarise(offences)
+	res.Message = summarise(offences, mode)
 	// A config nobody filled names no mode, and the separator would open the
 	// line on its own.
 	if mode != "" {
@@ -317,23 +311,36 @@ func strongest(offences []offence) (offence, bool) {
 	return offence{}, false
 }
 
+// remediationFor names the move the mode leaves open. Under cases a refusal
+// means a case the diff was supposed to keep is gone or red, and the sources
+// are what answers for that; the line-based modes ask for the file back.
+func remediationFor(mode domain.Immutability) domain.Remediation {
+	if mode == domain.ImmutabilityCases {
+		return domain.RemediationFixCode
+	}
+	return domain.RemediationRevertPaths
+}
+
 // summarise counts the offences by kind. A clean run says "0 removed": the line
 // prints whatever the verdict, and the count is the thing a reviewer wants to
-// see at zero.
-func summarise(offences []offence) string {
-	counts := make(map[offenceKind]int, 3)
+// see at zero. Mode cases counts the second thing it looks for as well.
+func summarise(offences []offence, mode domain.Immutability) string {
+	counts := make(map[offenceKind]int, 4)
 	for _, o := range offences {
 		counts[o.kind]++
 	}
 
-	parts := make([]string, 0, 3)
-	for _, k := range []offenceKind{kindRemoved, kindEdited, kindShortened} {
+	parts := make([]string, 0, 4)
+	for _, k := range []offenceKind{kindRemoved, kindEdited, kindShortened, kindRegressed} {
 		if n := counts[k]; n > 0 {
 			parts = append(parts, fmt.Sprintf("%d %s", n, k))
 		}
 	}
-	if len(parts) == 0 {
-		return "0 removed"
+	if len(parts) > 0 {
+		return strings.Join(parts, ", ")
 	}
-	return strings.Join(parts, ", ")
+	if mode == domain.ImmutabilityCases {
+		return "0 removed, 0 regressed"
+	}
+	return "0 removed"
 }

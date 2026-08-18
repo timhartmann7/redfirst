@@ -12,7 +12,8 @@ import "strings"
 //
 // names a case and the marker the sources have to carry for it to pass;
 // `flaky` makes the outcome follow $REDFIRST_PROBE_INDEX, `broken` fails
-// always, and a bare name passes always. A file-level line
+// always, `flaky-with: X` fails until the marker arrives and turns flaky once
+// it has, and a bare name passes always. A file-level line
 //
 //	// requires: discount
 //
@@ -123,6 +124,13 @@ failed=0
 			flaky) if [ $((index % 2)) -eq 1 ]; then ok=0; fi ;;
 			broken) ok=0 ;;
 			needs:*) if ! has "$(printf '%s' "${rule#needs:}" | sed 's|^ *||')"; then ok=0; fi ;;
+			flaky-with:*)
+				if ! has "$(printf '%s' "${rule#flaky-with:}" | sed 's|^ *||')"; then
+					ok=0
+				elif [ $((index % 2)) -eq 1 ]; then
+					ok=0
+				fi
+				;;
 			*)
 				echo "unknown rule \"$rule\" in $f" >&2
 				exit 1

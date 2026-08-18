@@ -14,6 +14,7 @@ import (
 // the environment up at all.
 type fakeProbe struct {
 	inventory domain.Runs
+	suite     domain.Runs
 	err       error
 	opens     int
 	runs      int
@@ -31,7 +32,7 @@ func (p *fakeProbe) Inventory(context.Context) (domain.Runs, error) {
 
 func (p *fakeProbe) Overlaid(context.Context) (domain.Runs, error)  { return nil, nil }
 func (p *fakeProbe) Head(context.Context) (domain.Runs, error)      { return nil, nil }
-func (p *fakeProbe) Suite(context.Context) (domain.Runs, error)     { return nil, nil }
+func (p *fakeProbe) Suite(context.Context) (domain.Runs, error)     { return p.suite, nil }
 func (p *fakeProbe) BaseSuite(context.Context) (domain.Runs, error) { return nil, nil }
 
 func (p *fakeProbe) Retry(context.Context, []string) (domain.Runs, error) { return nil, nil }

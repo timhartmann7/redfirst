@@ -99,6 +99,13 @@ func (p *Probe) Overlaid(ctx context.Context) (domain.Runs, error) {
 		if _, err := p.Inventory(ctx); err != nil {
 			return nil, err
 		}
+		files := p.headPaths()
+		if len(files) == 0 {
+			// The diff removed test files and added none, so head carries
+			// nothing to probe. An empty filter would run the whole suite, and
+			// a probe that ran everything would answer a question nobody asked.
+			return nil, nil
+		}
 		w, err := p.baseWorktree(ctx)
 		if err != nil {
 			return nil, err
@@ -106,7 +113,7 @@ func (p *Probe) Overlaid(ctx context.Context) (domain.Runs, error) {
 		if err := p.overlay(ctx, w.Dir()); err != nil {
 			return nil, err
 		}
-		return p.repeat(ctx, w, p.headPaths(), p.cfg.RedGreen.ProbeRuns)
+		return p.repeat(ctx, w, files, p.cfg.RedGreen.ProbeRuns)
 	})
 }
 
@@ -118,11 +125,15 @@ func (p *Probe) Head(ctx context.Context) (domain.Runs, error) {
 		if _, err := p.Overlaid(ctx); err != nil {
 			return nil, err
 		}
+		files := p.headPaths()
+		if len(files) == 0 {
+			return nil, nil
+		}
 		w, err := p.session.Worktree(ctx, domain.PhaseHead, p.diff.Head)
 		if err != nil {
 			return nil, err
 		}
-		return p.repeat(ctx, w, p.headPaths(), p.cfg.RedGreen.ProbeRuns)
+		return p.repeat(ctx, w, files, p.cfg.RedGreen.ProbeRuns)
 	})
 }
 

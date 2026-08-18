@@ -94,3 +94,47 @@ func writeCleanFixBase(r *Repo) {
 	r.Write("src/total.js", cleanFixSource)
 	r.Write("src/total.test.js", cleanFixTest)
 }
+
+const renamedSymbolSource = `export function orderTotal(items) {
+  let sum = 0
+  for (const item of items) {
+    sum += item.price
+  }
+  return sum
+}
+`
+
+// renamedSymbolTest is the same case under a new import. The case name does not
+// move with the symbol, which is the whole reason mode cases exists.
+const renamedSymbolTest = `import { orderTotal } from './total'
+
+// case: adds prices
+test('adds prices', () => {
+  expect(orderTotal([{ price: 10 }, { price: 5 }])).toBe(15)
+})
+`
+
+// RenamedSymbol builds the renamed-symbol fixture: a refactor that renames a
+// function the tests cover, so the test file loses the lines carrying the old
+// name.
+//
+// strict refuses the edit outright and append-only refuses it on the deleted
+// lines, which leaves the agent no legal diff for a task that is entirely
+// legitimate. The base ref asks for immutability = "cases", which judges the
+// outcome instead: the case name survives, so the refactor passes.
+func RenamedSymbol(t *testing.T) *Repo {
+	t.Helper()
+
+	r := NewRepo(t)
+	writeCleanFixBase(r)
+	r.Write("redfirst.toml", hookedFixConfig)
+	WriteHooks(r, Hooks{})
+	r.Commit("feat: add the order total and the redfirst hooks")
+
+	r.Branch(FixtureHead)
+	r.Write("src/total.js", renamedSymbolSource)
+	r.Write("src/total.test.js", renamedSymbolTest)
+	r.Commit("refactor: rename total to orderTotal")
+
+	return r
+}

@@ -197,3 +197,61 @@ func TestFileChange_BaseAndHeadPathsFollowTheStatus(t *testing.T) {
 		})
 	}
 }
+
+func TestRuns_FileAndOutcomeLookupsAnswerForACaseTheReportHasToName(t *testing.T) {
+	t.Parallel()
+
+	runs := runs(
+		[]domain.Case{{Name: "adds prices", Outcome: domain.CasePass}},
+		[]domain.Case{namedCase("adds prices", domain.CaseFail)},
+	)
+
+	// The first run named no file and the second did. A report line that fell
+	// back to the empty one would print a case nobody can find.
+	if got := runs.File("adds prices"); got != "src/total.test.js" {
+		t.Errorf("File = %q, want the file some run did attribute the case to", got)
+	}
+	if got := runs.File("never ran"); got != "" {
+		t.Errorf("File of an unknown case = %q, want empty", got)
+	}
+	if got := runs.Outcomes("adds prices").Strings(); len(got) != 2 || got[0] != "pass" || got[1] != "fail" {
+		t.Errorf("Strings = %v, want the outcomes run by run", got)
+	}
+}
+
+func TestRuns_AnyGreenSeparatesAMixedProbeFromARedOne(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		runs domain.Runs
+		want bool
+	}{
+		{"EveryRunRed", domain.Runs{{Green: false}, {Green: false}}, false},
+		{"OneRunGreen", domain.Runs{{Green: false}, {Green: true}}, true},
+		{"NoRunsAtAll", domain.Runs{}, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := tc.runs.AnyGreen(); got != tc.want {
+				t.Errorf("AnyGreen = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestOutcomes_AnyFindsTheOneRunThatDisagreed(t *testing.T) {
+	t.Parallel()
+
+	outcomes := domain.Outcomes{domain.CasePass, domain.CaseFail, domain.CasePass}
+
+	if !outcomes.Any(domain.CaseFail) {
+		t.Error("Any(fail) missed the run that failed")
+	}
+	if outcomes.Any(domain.CaseSkip) {
+		t.Error("Any(skip) found a skip nobody reported")
+	}
+}
