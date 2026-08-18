@@ -45,7 +45,8 @@ func diffDigest(diff domain.Diff) string {
 // It stays empty where no base probe would run at all. A key for a probe that
 // never happened would look like a cache entry nobody may have.
 func baseProbeKey(
-	ctx context.Context, src objectSource, base string, in domain.Input, caps runner.CapSet,
+	ctx context.Context, src objectSource, base string,
+	diff domain.Diff, cfg domain.Config, caps runner.CapSet,
 ) (string, error) {
 	if !caps.Has(domain.CapHooks) || !caps.Has(domain.CapTestFiles) {
 		return "", nil
@@ -55,18 +56,18 @@ func baseProbeKey(
 		return "", err
 	}
 
-	fields := []string{in.Diff.MergeBase, hooks}
-	fields = append(fields, changeFields(testSurface(in))...)
+	fields := []string{diff.MergeBase, hooks}
+	fields = append(fields, changeFields(testSurface(diff, cfg))...)
 	return digest(baseProbePurpose, fields...), nil
 }
 
 // testSurface is the file set the probe overlays: everything in the diff that
 // decides a test outcome. A rename counts under both of its paths, the same way
 // the capability does, so the key covers every file that made the probe happen.
-func testSurface(in domain.Input) []domain.FileChange {
+func testSurface(diff domain.Diff, cfg domain.Config) []domain.FileChange {
 	var files []domain.FileChange
-	for _, f := range in.Diff.Files {
-		if in.Config.IsTestSurface(f.Path) || (f.OldPath != "" && in.Config.IsTestSurface(f.OldPath)) {
+	for _, f := range diff.Files {
+		if cfg.IsTestSurface(f.Path) || (f.OldPath != "" && cfg.IsTestSurface(f.OldPath)) {
 			files = append(files, f)
 		}
 	}

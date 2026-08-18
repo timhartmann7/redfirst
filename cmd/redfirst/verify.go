@@ -114,8 +114,7 @@ func judge(ctx context.Context, f verifyFlags) ([]domain.GateResult, domain.Repo
 	if err != nil {
 		return nil, domain.Report{}, err
 	}
-	in := domain.Input{Diff: diff, Config: cfg}
-	probeKey, err := baseProbeKey(ctx, repo, f.base, in, caps)
+	probeKey, err := baseProbeKey(ctx, repo, f.base, diff, cfg, caps)
 	if err != nil {
 		return nil, domain.Report{}, err
 	}

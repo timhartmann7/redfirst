@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -75,6 +76,57 @@ func TestExplain_RunsNothingAndWritesNothing(t *testing.T) {
 	}
 	if after := r.Git("status", "--porcelain=v1", "--untracked-files=all"); after != before {
 		t.Errorf("the working tree changed: %q, was %q", after, before)
+	}
+}
+
+// TestExplain_AnswersForThePathWhateverTheShellPassed covers the spellings a
+// terminal produces. A rooted glob misses "./.claude/x" and misses an absolute
+// path, and the answer that came back would be wrong rather than missing: the
+// command exists to settle arguments, so a wrong "not protected" is the worst
+// output it has.
+func TestExplain_AnswersForThePathWhateverTheShellPassed(t *testing.T) {
+	t.Parallel()
+
+	r := testkit.CleanFix(t)
+	root := r.Git("rev-parse", "--show-toplevel")
+
+	tests := []struct {
+		name string
+		path string
+	}{
+		{name: "as the rules spell it", path: ".claude/settings.json"},
+		{name: "as a shell completes a hidden directory", path: "./.claude/settings.json"},
+		{name: "as an absolute path pastes", path: filepath.Join(root, ".claude/settings.json")},
+		{name: "with a detour through a sibling directory", path: "src/../.claude/settings.json"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := explainOutput(t, r.Dir, "--path", tc.path)
+			want := "paths.protected    yes · .claude/** · an edit here blocks the diff"
+			if !strings.Contains(got, want) {
+				t.Errorf("%q was not judged as %s:\n%s", tc.path, ".claude/**", got)
+			}
+		})
+	}
+}
+
+// TestExplain_RefusesAPathOutsideTheRepository keeps the answer honest where it
+// cannot be given: the rules describe one repository, and every list in them
+// would report "no" for a file that is not in it.
+func TestExplain_RefusesAPathOutsideTheRepository(t *testing.T) {
+	t.Parallel()
+
+	r := testkit.CleanFix(t)
+	err := run(context.Background(),
+		[]string{"explain", "--repo", r.Dir, "--base", testkit.FixtureBase, "--path", "../elsewhere/x.ts"},
+		io.Discard, io.Discard)
+	if err == nil {
+		t.Fatal("a path outside the repository got an answer")
+	}
+	if !strings.Contains(err.Error(), "outside the repository") {
+		t.Errorf("error %q does not say the path is not in the repository", err)
 	}
 }
 

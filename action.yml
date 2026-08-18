@@ -63,6 +63,10 @@ runs:
         set -eu
         base="$BASE_REF"
         if [ -z "$base" ]; then
+          if [ -z "$DEFAULT_BASE" ]; then
+            echo "no base ref: this event carries none, so pass the base input" >&2
+            exit 1
+          fi
           base="origin/$DEFAULT_BASE"
         fi
         # shellcheck disable=SC2086 -- args is a flag list and has to split.
