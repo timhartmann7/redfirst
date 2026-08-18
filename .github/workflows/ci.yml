@@ -26,8 +26,16 @@ jobs:
       # shared runner's timings would otherwise fail a green branch.
       - run: make bench
       # Cross-compilation and the 15 MB budget are release properties, and a
-      # release is the worst place to learn one broke.
-      - run: make dist
+      # release is the worst place to learn one broke. Building twice checks the
+      # third one: a release publishes the checksum of what it built, and a
+      # checksum nobody can reproduce pins nothing.
+      - name: Build the release artifacts twice
+        run: |
+          set -eu
+          make dist
+          cp dist/checksums.txt "$RUNNER_TEMP/checksums.first"
+          make dist
+          diff "$RUNNER_TEMP/checksums.first" dist/checksums.txt
 
   # Dogfooding, in warn mode until S8: redfirst judges every pull request
   # against this repository's own rules and reports without blocking.
