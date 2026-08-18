@@ -42,8 +42,8 @@ func ParseMode(s string) (Mode, error) {
 	return "", fmt.Errorf("unknown unit mode %q, want auto, merge, squash or commit", s)
 }
 
-// Noun names the unit in the header, singular: the count decides the plural.
-func (m Mode) Noun() string {
+// noun names the unit in the header, singular: the count decides the plural.
+func (m Mode) noun() string {
 	switch m {
 	case ModeMerge:
 		return "merged PR"
@@ -53,11 +53,11 @@ func (m Mode) Noun() string {
 	return "commit"
 }
 
-// Caveat is what the mode costs in accuracy. Mode merge gives exact pull
+// caveat is what the mode costs in accuracy. Mode merge gives exact pull
 // request boundaries and the other two do not: a pull request that landed as
 // three commits counts three times, and the diff-budget statistics come out
 // understated. The header says so rather than keeping quiet.
-func (m Mode) Caveat() string {
+func (m Mode) caveat() string {
 	if m == ModeMerge {
 		return "a merge commit is one pull request"
 	}

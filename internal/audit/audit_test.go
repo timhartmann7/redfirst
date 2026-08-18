@@ -24,7 +24,7 @@ func TestAudit_SummaryOverAKnownHistoryMatchesExactly(t *testing.T) {
 		{Category: "test-immutability", Units: 2},
 		{Category: "no-disabled-tests", Units: 2},
 		{Category: "suppression-scan", Units: 1},
-		{Category: "guarded-paths", Units: 1},
+		{Category: "guarded-paths", Units: 2},
 	}
 
 	if !slices.Equal(got.Findings, want) {
@@ -64,6 +64,26 @@ func TestAudit_OneUnitCountsOnceForOneGate(t *testing.T) {
 			slices.Contains(u.Findings, string(domain.WarnSuppression)) {
 			t.Errorf("unit %s counts one suppressed symptom twice: %v", u.Commit, u.Findings)
 		}
+	}
+}
+
+// TestAudit_ARefusalDoesNotSwallowTheReviewerLinesBesideIt covers a unit that
+// tripped two rules over two different files. The counts are statistics, and a
+// guarded path that goes uncounted whenever some other gate happened to refuse
+// the same unit makes them depend on how the work was split into units.
+func TestAudit_ARefusalDoesNotSwallowTheReviewerLinesBesideIt(t *testing.T) {
+	t.Parallel()
+
+	got := run(t, testkit.AuditHistory(t), options())
+
+	newest := got.PerUnit[0]
+	if newest.Subject != "Merge pull request #8 from shop/instructions" {
+		t.Fatalf("the newest unit is %q", newest.Subject)
+	}
+	want := []string{string(domain.GateProtectedPaths), string(domain.WarnGuardedPaths)}
+	if !slices.Equal(newest.Findings, want) {
+		t.Errorf("findings = %v, want %v: the unit edits CLAUDE.md, the workflow and the lockfile",
+			newest.Findings, want)
 	}
 }
 

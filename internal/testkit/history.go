@@ -107,7 +107,11 @@ func AuditHistory(t *testing.T) *Repo {
 		r.Write("src/total.test.js", auditTotalTest+auditOnlyCase)
 	})
 	pullRequest(r, 8, "instructions", "docs: tell the agent about the shop", func() {
+		// A refusal and a reviewer's line in one unit, over different files:
+		// the summary counts both, and counts the two guarded files once.
 		r.Write("CLAUDE.md", "# shop\n\nRun the tests before you commit.\n")
+		r.Write(".github/workflows/ci.yml", auditWorkflow+"  workflow_dispatch:\n")
+		r.Write("pnpm-lock.yaml", "lockfileVersion: '9.0'\n")
 	})
 
 	return r

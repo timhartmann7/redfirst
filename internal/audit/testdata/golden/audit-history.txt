@@ -6,4 +6,4 @@ Audited 8 merged PRs on main (last 14 days)
   2  test-immutability
   2  no-disabled-tests
   1  suppression-scan
-  1  guarded-paths
+  2  guarded-paths

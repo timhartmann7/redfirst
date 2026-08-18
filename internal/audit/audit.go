@@ -6,6 +6,7 @@ package audit
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/timhartmann7/redfirst/internal/config"
@@ -97,7 +98,7 @@ func Run(ctx context.Context, repo *gitx.Repo, opts Options) (Summary, error) {
 	return Summary{
 		Base:     opts.Base,
 		Unit:     mode,
-		Caveat:   mode.Caveat(),
+		Caveat:   mode.caveat(),
 		Units:    len(units),
 		Days:     span(commits),
 		Notes:    notes,
@@ -135,13 +136,14 @@ func judge(
 	}, nil
 }
 
-// categories names what one unit tripped, one entry per gate.
+// categories names what one unit tripped, in execution order and once each.
 //
-// A gate that spoke names itself; a gate that stayed silent lets the report
-// lines it produced name themselves. Both come out in execution order. Without
-// that rule suppression-scan would count twice on one empty catch block, once
-// under its own id and once under the warning it raised, and a reader counting
-// findings would see two problems where the report shows one.
+// The entries are the lines the report itself prints: a gate that refused or
+// warned, and a category of its own for every warning a gate raised beside its
+// verdict. Suppression is the exception the report already makes, for the same
+// reason: those lines restate what suppression-scan just said, while a guarded
+// path is a fact about the files that gate deliberately let through, and a
+// refusal over some other file may not swallow it.
 func categories(results []domain.GateResult) []string {
 	var out []string
 	seen := make(map[string]bool, len(results))
@@ -155,10 +157,11 @@ func categories(results []domain.GateResult) []string {
 	for _, r := range results {
 		if r.Status == domain.StatusFail || r.Status == domain.StatusWarn {
 			add(string(r.ID))
-			continue
 		}
 		for _, w := range r.Warnings {
-			add(string(w.Kind))
+			if w.Kind != domain.WarnSuppression {
+				add(string(w.Kind))
+			}
 		}
 	}
 	return out
@@ -192,12 +195,7 @@ func summarise(units []Unit) []Finding {
 }
 
 func isGate(category string) bool {
-	for _, id := range domain.AllGateIDs() {
-		if string(id) == category {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(domain.AllGateIDs(), domain.GateID(category))
 }
 
 // downgradeNotes phrases the config keys the run had to lower.

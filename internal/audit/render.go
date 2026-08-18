@@ -51,7 +51,7 @@ func renderText(w io.Writer, s Summary, perUnit bool) error {
 	var b strings.Builder
 
 	line(&b, fmt.Sprintf("Audited %d %s on %s (last %d %s)",
-		s.Units, plural(s.Units, s.Unit.Noun()), s.Base, s.Days, plural(s.Days, "day")))
+		s.Units, plural(s.Units, s.Unit.noun()), s.Base, s.Days, plural(s.Days, "day")))
 	line(&b, fmt.Sprintf("  unit=%s · %s", s.Unit, s.Caveat))
 	for _, n := range s.Notes {
 		line(&b, "  note: "+n)
