@@ -20,6 +20,15 @@ const (
 	binaryCount = "-"
 )
 
+// The fields of one `--raw` metadata record: two file modes, two object ids and
+// the status. The record opens with a colon, which is how git marks it.
+const (
+	rawFields    = 5
+	rawPrefix    = ":"
+	rawDstObject = 3
+	rawStatus    = 4
+)
+
 // Diff is the change under judgement, merge-base to head.
 func (r *Repo) Diff(ctx context.Context, base, head string) (domain.Diff, error) {
 	baseSHA, err := r.Resolve(ctx, base)
@@ -40,9 +49,9 @@ func (r *Repo) Diff(ctx context.Context, base, head string) (domain.Diff, error)
 	var files []domain.FileChange
 	err = r.runStream(ctx, func(s *bufio.Scanner) error {
 		var perr error
-		files, perr = parseNameStatus(s)
+		files, perr = parseRaw(s)
 		return perr
-	}, diffArgs("--name-status", mergeBase, headSHA)...)
+	}, diffArgs(mergeBase, headSHA, "--raw", "--no-abbrev")...)
 	if err != nil {
 		return domain.Diff{}, err
 	}
@@ -50,7 +59,7 @@ func (r *Repo) Diff(ctx context.Context, base, head string) (domain.Diff, error)
 	byPath := indexByPath(files)
 	err = r.runStream(ctx, func(s *bufio.Scanner) error {
 		return parseNumstat(s, byPath)
-	}, diffArgs("--numstat", mergeBase, headSHA)...)
+	}, diffArgs(mergeBase, headSHA, "--numstat")...)
 	if err != nil {
 		return domain.Diff{}, err
 	}
@@ -72,11 +81,10 @@ func (r *Repo) Diff(ctx context.Context, base, head string) (domain.Diff, error)
 // line of `*.py -diff` on the agent's branch makes numstat print "-" for every
 // count, and diff-budget then measures a diff the agent zeroed itself.
 // Invariant 5 puts rule lists on base, and .gitattributes is one of them.
-func diffArgs(format, from, to string) []string {
-	return []string{
-		"--attr-source=" + from,
-		"diff", format, "-z", "--find-renames", "--find-copies", from, to,
-	}
+func diffArgs(from, to string, format ...string) []string {
+	args := []string{"--attr-source=" + from, "diff"}
+	args = append(args, format...)
+	return append(args, "-z", "--find-renames", "--find-copies", from, to)
 }
 
 // indexByPath addresses the changes by their head path, which is unique inside
@@ -89,12 +97,22 @@ func indexByPath(files []domain.FileChange) map[string]*domain.FileChange {
 	return byPath
 }
 
-// parseNameStatus reads `status NUL path NUL` records. Rename and copy carry a
-// second path, and the destination is the one that lands in Path.
-func parseNameStatus(s *bufio.Scanner) ([]domain.FileChange, error) {
+// parseRaw reads `:srcmode dstmode srcsha dstsha status NUL path NUL` records.
+// Rename and copy carry a second path, and the destination is the one that
+// lands in Path.
+//
+// The raw format is --name-status plus the object ids, and it costs the same
+// one invocation. The id of the file on head is what identifies its content,
+// and the report publishes digests built from it.
+func parseRaw(s *bufio.Scanner) ([]domain.FileChange, error) {
 	var files []domain.FileChange
 	for s.Scan() {
-		status, err := domain.ParseFileStatus(s.Text())
+		record := s.Text()
+		meta := strings.Fields(record)
+		if len(meta) != rawFields || !strings.HasPrefix(meta[0], rawPrefix) {
+			return nil, fmt.Errorf("%w: unexpected git raw diff record %q", domain.ErrInternal, record)
+		}
+		status, err := domain.ParseFileStatus(meta[rawStatus])
 		if err != nil {
 			return nil, err
 		}
@@ -102,7 +120,7 @@ func parseNameStatus(s *bufio.Scanner) ([]domain.FileChange, error) {
 		if err != nil {
 			return nil, err
 		}
-		change := domain.FileChange{Path: path, Status: status}
+		change := domain.FileChange{Path: path, Status: status, Object: meta[rawDstObject]}
 		if status.HasOldPath() {
 			change.OldPath = path
 			if change.Path, err = next(s, "the destination of status "+string(status)); err != nil {
@@ -129,7 +147,7 @@ func parseNumstat(s *bufio.Scanner, byPath map[string]*domain.FileChange) error 
 		}
 		change, ok := byPath[path]
 		if !ok {
-			return fmt.Errorf("%w: git numstat reports %q, which --name-status did not",
+			return fmt.Errorf("%w: git numstat reports %q, which the raw diff did not",
 				domain.ErrInternal, path)
 		}
 		if err := applyCounts(change, fields[0], fields[1]); err != nil {

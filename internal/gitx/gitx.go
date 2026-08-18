@@ -57,6 +57,21 @@ func (r *Repo) MergeBase(ctx context.Context, a, b string) (string, error) {
 	return sha, nil
 }
 
+// ObjectID is the id of the object a path holds in a ref: a blob for a file, a
+// tree for a directory. A tree id covers everything under it, so one call
+// identifies the whole hook directory.
+//
+// A missing path is an error rather than an empty answer: the callers ask only
+// for paths Exists has already found, and an id nobody could read is a broken
+// repository.
+func (r *Repo) ObjectID(ctx context.Context, ref, path string) (string, error) {
+	id, err := r.runLine(ctx, "rev-parse", "--verify", "--end-of-options", ref+":"+path)
+	if err != nil {
+		return "", fmt.Errorf("cannot read the object id of %q in %q: %w", path, ref, err)
+	}
+	return id, nil
+}
+
 // Exists reports whether a path is present in a ref, file or directory alike.
 // An absent path is an answer rather than a failure; an unknown ref is not.
 func (r *Repo) Exists(ctx context.Context, ref, path string) (bool, error) {

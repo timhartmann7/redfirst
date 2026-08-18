@@ -58,6 +58,11 @@ type FileChange struct {
 	Binary bool
 	// Generated marks linguist-generated in .gitattributes at the base ref.
 	Generated bool
+	// Object is the git object id of the file on head, printed by
+	// `git diff --raw`: forty zeroes where the file is gone. An object id names
+	// content exactly, which is what the digests the report publishes are built
+	// from.
+	Object string
 	// AddedLines is what the diff added, in file order, without the leading
 	// plus. Only added lines travel: a gate judges what the diff introduced,
 	// and the lines it left alone were never the agent's doing. Empty for a
