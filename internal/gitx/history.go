@@ -71,7 +71,11 @@ func walkArgs(ref string, w Walk) []string {
 	if w.Since != "" {
 		args = append(args, "--since="+w.Since)
 	}
-	return append(args, "--end-of-options", ref)
+	// The trailing -- ends the revisions. --end-of-options stops flag parsing
+	// and settles nothing about the other ambiguity: a repository holding both
+	// a branch named release and a directory named release/ would otherwise
+	// answer an audit with "ambiguous argument".
+	return append(args, "--end-of-options", ref, "--")
 }
 
 func parseCommits(s *bufio.Scanner) ([]Commit, error) {
