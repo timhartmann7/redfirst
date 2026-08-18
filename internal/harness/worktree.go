@@ -42,7 +42,6 @@ type Worktree struct {
 
 // Result is one execution of test.sh.
 type Result struct {
-	Phase Phase
 	// Index is the run's number inside its phase.
 	Index int
 	// Green is the exit code being zero. What green means is the hook's call.
@@ -107,7 +106,7 @@ func (w *Worktree) Run(ctx context.Context, filter []string) (res Result, err er
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{Phase: w.phase, Index: w.runs, Green: run.ok, Cases: cases}, nil
+	return Result{Index: w.runs, Green: run.ok, Cases: cases}, nil
 }
 
 // Named reports whether the results carry per-case names. It is what the runner

@@ -243,6 +243,35 @@ func TestWorktree_ResultsWithoutNamesWithholdCapCaseNames(t *testing.T) {
 	}
 }
 
+// TestWorktree_ReadsTAPAsReadilyAsJUnit holds the line of the hook contract
+// that says the content picks the format: the harness is handed a file with no
+// extension, and a project that reports TAP is a project like any other.
+func TestWorktree_ReadsTAPAsReadilyAsJUnit(t *testing.T) {
+	t.Parallel()
+
+	set := recording()
+	set.test = "test-tap.sh"
+	f := newFixture(t, set)
+	s := f.open(t, false)
+	defer closeSession(t, t.Context(), s)
+
+	res := mustRun(t, worktree(t, s, harness.PhaseBase, testkit.FixtureBase))
+
+	want := []harness.Case{
+		{Name: "adds prices", Outcome: harness.OutcomePass},
+		{Name: "applies a discount", Outcome: harness.OutcomeFail},
+	}
+	if !slices.Equal(res.Cases, want) {
+		t.Errorf("cases = %v\nwant %v", res.Cases, want)
+	}
+	if res.Green {
+		t.Error("the run exited non-zero and is not green")
+	}
+	if !res.Named() {
+		t.Error("TAP names its cases, so the run has per-case names")
+	}
+}
+
 // TestWorktree_APhaseStartedAgainReadsNoResultsButItsOwn covers the run that
 // died before it wrote: the phase numbers its runs from one again, and the
 // results of the phase before it sit under that very name.
