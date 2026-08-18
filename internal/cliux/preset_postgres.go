@@ -83,9 +83,12 @@ docker compose up --detach --wait
 // postgresReset is what picks the reused mode: its presence tells redfirst the
 // services may stay up between runs.
 const postgresReset = `
-# Data only. The schema comes from the migrations, which sit in paths.protected,
-# so the base tree and the head tree share it by construction; recreating it
-# between runs would pay for a migration nothing changed.
+# Data only. The base tree and the head tree share a schema for as long as the
+# migrations sit in paths.protected, where the diff under judgement cannot reach
+# them, and recreating the schema between runs would then pay for a migration
+# nothing changed. The built-in defaults only guard the migrations, which reports
+# without blocking, so move the path into paths.protected before relying on this
+# file; redfirst doctor prints a reuse row while it sits outside.
 #
 # The bookkeeping table of the migration tool stays: emptying it would tell the
 # next run the schema was never applied.
@@ -97,7 +100,17 @@ const postgresReset = `
 # reaching SQL, so the quotes around every literal below would be eaten before
 # psql saw them. <<'SQL' expands nothing at all, which is what leaves $$, the
 # quotes and the % patterns to arrive as written.
-docker compose exec -T postgres psql -U "$PGUSER" -d "$PGDATABASE" -q <<'SQL'
+#
+# ON_ERROR_STOP=1 makes a failed statement a failed script. Without it psql
+# prints the error and exits 0, redfirst reads a reset that worked, and the next
+# run finds the data of the one before.
+#
+# RESTART IDENTITY resets the sequences the truncated tables own, so the first
+# row of the head phase gets the id the first row of the base phase got. A test
+# that asserts an id is a bad test, and a probe that goes red on base for that
+# reason is a false refusal.
+docker compose exec -T postgres psql -U "$PGUSER" -d "$PGDATABASE" -q \
+	-v ON_ERROR_STOP=1 <<'SQL'
 DO $$
 DECLARE t text;
 BEGIN
@@ -105,7 +118,7 @@ BEGIN
     SELECT tablename FROM pg_tables
     WHERE schemaname = 'public' AND tablename NOT LIKE '%migration%'
   LOOP
-    EXECUTE format('TRUNCATE TABLE %I CASCADE', t);
+    EXECUTE format('TRUNCATE TABLE %I RESTART IDENTITY CASCADE', t);
   END LOOP;
 END $$;
 SQL

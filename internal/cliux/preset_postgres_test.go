@@ -103,7 +103,10 @@ func TestInitHooks_TheResetSQLReachesPsqlAsItWasWritten(t *testing.T) {
 	}
 
 	got := string(mustRead(t, sql))
-	for _, want := range []string{"schemaname = 'public'", "'%migration%'", "format('TRUNCATE TABLE %I CASCADE', t)"} {
+	for _, want := range []string{
+		"schemaname = 'public'", "'%migration%'",
+		"format('TRUNCATE TABLE %I RESTART IDENTITY CASCADE', t)",
+	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the shell ate the quotes around %q before psql saw them:\n%s", want, got)
 		}
