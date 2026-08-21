@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -100,6 +101,10 @@ func TestInitHooks_EveryPresetWritesARunnableHookSet(t *testing.T) {
 // TestInitHooks_EveryTestHookObeysTheHookContract holds the requirements of
 // section 7 that decide whether a verdict is worth anything. A generated hook
 // that broke one of them would ship the exact defect doctor exists to find.
+// buildGate is the shape every gated hook shares: a command whose failure ends
+// the run before a results file exists.
+var buildGate = regexp.MustCompile(`(?m)^if ! .+; then$`)
+
 func TestInitHooks_EveryTestHookObeysTheHookContract(t *testing.T) {
 	t.Parallel()
 
@@ -110,12 +115,20 @@ func TestInitHooks_EveryTestHookObeysTheHookContract(t *testing.T) {
 		// has none; leaving the branch out is what lets doctor read the rerun
 		// timings for the one stack where a replayed verdict is the default.
 		staged bool
+		// gated says the hook decides whether the tree builds before it reports
+		// anything. Every runner here names the file it could not build as a
+		// case of its own, and red-green reads that name as a case the diff
+		// added: red on base, gone from head once the fix arrives, which
+		// refuses the honest fix that adds a module and its test together. A
+		// tree that does not build has to leave $REDFIRST_RESULTS empty, which
+		// is what red_green.compile_failure_on_base rules on.
+		gated bool
 	}{
-		{cliux.PresetNodeUnit, true},
-		{cliux.PresetNodePostgres, true},
-		{cliux.PresetPythonPytest, true},
-		{cliux.PresetGo, false},
-		{cliux.PresetBlank, false},
+		{cliux.PresetNodeUnit, true, true},
+		{cliux.PresetNodePostgres, true, true},
+		{cliux.PresetPythonPytest, true, true},
+		{cliux.PresetGo, false, true},
+		{cliux.PresetBlank, false, false},
 	}
 
 	for _, tc := range tests {
@@ -132,6 +145,17 @@ func TestInitHooks_EveryTestHookObeysTheHookContract(t *testing.T) {
 			if staged != tc.staged {
 				t.Errorf("the %s test.sh stages its first run: %v, want %v:\n%s",
 					tc.preset, staged, tc.staged, test)
+			}
+			gated := buildGate.MatchString(test)
+			if gated != tc.gated {
+				t.Errorf("the %s test.sh stops a tree that does not build: %v, want %v:\n%s",
+					tc.preset, gated, tc.gated, test)
+			}
+			// The quoted form appears only in the command that writes the
+			// file, never in the prose above it.
+			if gated && buildGate.FindStringIndex(test)[0] > strings.Index(test, `"$REDFIRST_RESULTS"`) {
+				t.Errorf("the %s test.sh writes its results before it decides the tree builds:\n%s",
+					tc.preset, test)
 			}
 		})
 	}
