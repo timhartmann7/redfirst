@@ -304,3 +304,19 @@ disabled = ["blast-radius"]
 [scopes]
 allow_cross_scope = true
 `
+
+// TestConfig_RedGreenEnabledFalseSwitchesTheGateOff pins the one key the spec
+// gives red-green of its own. It parses, defaults to true and reaches
+// `redfirst explain`, so a config that sets it to false has to switch the gate
+// off rather than run it anyway.
+func TestConfig_RedGreenEnabledFalseSwitchesTheGateOff(t *testing.T) {
+	t.Parallel()
+
+	cfg := loadOK(t, "version = 1\n\n[red_green]\nenabled = false\n")
+	if !cfg.GateDisabled(domain.GateRedGreen) {
+		t.Error("red_green.enabled = false left the gate running")
+	}
+	if cfg.GateDisabled(domain.GateSuiteGreen) {
+		t.Error("red_green.enabled = false switched suite-green off as well")
+	}
+}

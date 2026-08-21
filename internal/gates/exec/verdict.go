@@ -2,19 +2,47 @@ package exec
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/timhartmann7/redfirst/internal/domain"
 )
 
-// The four refusals red-green can reach, spelled out where they are worded
+// The refusals red-green can reach, spelled out where they are worded
 // rather than at their call sites. A failure line says what is wrong, not what
 // got checked: "test is green on base" helps, "red-green check failed" does not.
 const (
 	greenOnBase = "test is green on base, it does not cover the fix"
 	flakyOnBase = "flaky test, base probe is not deterministic"
 	redOnHead   = "test is red on head, the fix does not make it pass"
+	goneOnHead  = "the case the base probe named is not reported on head at all"
 	flakyOnHead = "flaky test, head probe is not deterministic"
+	sharedName  = "two test files carry one case name, the added case cannot be told from the other"
 )
+
+// ambiguous refuses a set whose names do not stand for one case each.
+//
+// Two files carrying one name is not an edge case to round off. A real case red
+// on base beside a fake one green on base collapses into a single entry, the
+// real one answers for both, and the fake reaches a human with a green verdict.
+// Renaming the case the diff added is a move the agent has, so this is a
+// refusal rather than a human-required.
+func ambiguous(runs domain.Runs, names []string) (domain.GateResult, bool) {
+	var evidence []domain.Evidence
+	for _, name := range names {
+		files := runs.Sharing(name)
+		if len(files) < 2 {
+			continue
+		}
+		evidence = append(evidence, domain.Evidence{
+			File: files[0], Case: name,
+			Detail: "the name is carried by " + strings.Join(files, " and "),
+		})
+	}
+	if len(evidence) == 0 {
+		return domain.GateResult{}, false
+	}
+	return refuse(sharedName, domain.RemediationFixTest, evidence...), true
+}
 
 // judgeBase demands the one result that proves an added case catches a bug:
 // red in every run, not red in one of them.
@@ -50,11 +78,13 @@ func judgeBase(base domain.Runs, added []string) (domain.GateResult, bool) {
 // that only sometimes passes with the fix in place has no value either, and
 // K-of-K cuts it off here as well.
 func judgeHead(base, head domain.Runs, added []string) domain.GateResult {
-	var red, mixed []string
+	var red, gone, mixed []string
 	for _, name := range added {
 		outcomes := head.Outcomes(name)
 		switch {
 		case outcomes.All(domain.CasePass):
+		case outcomes.All(domain.CaseAbsent):
+			gone = append(gone, name)
 		case !outcomes.Any(domain.CasePass):
 			red = append(red, name)
 		default:
@@ -62,6 +92,14 @@ func judgeHead(base, head domain.Runs, added []string) domain.GateResult {
 		}
 	}
 
+	// A case no head run mentions is not a case the fix failed to turn green,
+	// and telling the agent to fix the code sends it at sources that are doing
+	// their job. It is the name itself that did not survive: either the diff
+	// took the case away, or the base probe never named a case at all and the
+	// harness reported the file it could not build under a name of its own.
+	if len(gone) > 0 {
+		return refuse(goneOnHead, domain.RemediationFixTest, headEvidence(base, head, gone)...)
+	}
 	if len(red) > 0 {
 		return refuse(redOnHead, domain.RemediationFixCode, headEvidence(base, head, red)...)
 	}
@@ -143,8 +181,14 @@ func baseEvidence(base domain.Runs, names []string) []domain.Evidence {
 func headEvidence(base, head domain.Runs, names []string) []domain.Evidence {
 	out := make([]domain.Evidence, 0, len(names))
 	for _, name := range names {
+		// A case head never reported has no file there, and the base probe is
+		// the only place left that knows where the name came from.
+		file := head.File(name)
+		if file == "" {
+			file = base.File(name)
+		}
 		out = append(out, domain.Evidence{
-			File:     head.File(name),
+			File:     file,
 			Case:     name,
 			BaseRuns: base.Outcomes(name).Strings(),
 			HeadRuns: head.Outcomes(name).Strings(),

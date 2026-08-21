@@ -195,6 +195,21 @@ if [ "$REDFIRST_PROBE_INDEX" = 1 ]; then
 	pnpm install --frozen-lockfile
 fi
 
+# The collection gets a step of its own, and that is the opposite of tidiness.
+# A test file that does not resolve its imports is reported by vitest run as a
+# case named after the file, and red-green reads a name it did not see on base
+# as a case the diff added: red on base, gone from head once the fix is there,
+# which refuses the honest fix that adds a module together with the test for it.
+# A tree that does not collect has no case to report, so this step leaves
+# $REDFIRST_RESULTS empty instead, which is what
+# red_green.compile_failure_on_base is there to rule on.
+#
+# vitest list collects without running, so nothing executes twice here.
+if ! pnpm exec vitest list $REDFIRST_FILTER >/dev/null; then
+	echo "the test files under $REDFIRST_FILTER do not collect" >&2
+	exit 1
+fi
+
 # $REDFIRST_FILTER is left unquoted on purpose: it carries a list of files, and
 # an empty one has to run the whole suite.
 #
@@ -236,6 +251,19 @@ fi
 # probe would then execute the code of the run before it. A base probe that
 # comes back green for that reason reads as "the test is green on base".
 export PYTHONDONTWRITEBYTECODE=1
+
+# The collection gets a step of its own, for the same reason the build does in
+# a compiled language. A test module that cannot be imported is reported by
+# pytest as a case named after the file, and red-green reads a name it did not
+# see on base as a case the diff added: red on base, gone from head once the fix
+# is there, which refuses the honest fix that adds a module together with the
+# test for it. A tree that does not collect has no case to report, so this step
+# leaves $REDFIRST_RESULTS empty instead, which is what
+# red_green.compile_failure_on_base is there to rule on.
+if ! "$venv/bin/pytest" --collect-only -q -p no:cacheprovider $REDFIRST_FILTER >/dev/null; then
+	echo "the test modules under $REDFIRST_FILTER do not import" >&2
+	exit 1
+fi
 
 # $REDFIRST_FILTER is left unquoted on purpose: it carries a list of files, and
 # an empty one has to run the whole suite.
@@ -316,7 +344,7 @@ exit 0
 `
 
 const blankTest = `
-# Run the tests of this project. This is the hook redfirst judges by, and four
+# Run the tests of this project. This is the hook redfirst judges by, and five
 # rules decide whether that judgement is worth anything.
 #
 # 1. $REDFIRST_FILTER carries a list of files. Run only those when it is
@@ -329,7 +357,12 @@ const blankTest = `
 #    exit code 5, which no diff the agent writes can answer.
 # 3. Install dependencies and build only when $REDFIRST_PROBE_INDEX is 1. Every
 #    run of a phase shares one working copy, so the rest is already built.
-# 4. Never hand back the result of the previous run. Runners that cache have a
+# 4. Decide the tree builds before reporting anything. A file that does not
+#    build is reported by most runners as a case named after the file, and
+#    red-green reads that as a case the diff added: red on base, gone from head
+#    once the fix arrives. A tree that does not build has to leave
+#    $REDFIRST_RESULTS empty instead.
+# 5. Never hand back the result of the previous run. Runners that cache have a
 #    flag for it: go test needs -count=1.
 #
 # $REDFIRST_WORKDIR is the working copy, and it is already the current

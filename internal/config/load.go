@@ -57,7 +57,23 @@ func Load(ctx context.Context, src FileSource, ref, path string) (domain.Config,
 	if err := validate(cfg, md); err != nil {
 		return domain.Config{}, "", fmt.Errorf("%s in %s: %w", path, ref, err)
 	}
+	resolveRedGreenEnabled(&cfg)
 	return cfg, "base:" + path, nil
+}
+
+// resolveRedGreenEnabled folds the one switch the spec gives red-green of its
+// own into the list every gate answers to.
+//
+// The fold happens here rather than in Config.GateDisabled because false is the
+// zero value of the field: reading it at judgement time would let a Config
+// nobody loaded switch the gate off in silence. Here the value can only have
+// come from a file somebody wrote, and `redfirst explain` prints the result
+// through the same list as any other disabled gate.
+func resolveRedGreenEnabled(cfg *domain.Config) {
+	if cfg.RedGreen.Enabled || cfg.GateDisabled(domain.GateRedGreen) {
+		return
+	}
+	cfg.Gates.Disabled = append(cfg.Gates.Disabled, domain.GateRedGreen)
 }
 
 // DowngradeCasesWithoutHooks lowers every cases mode to append-only and names

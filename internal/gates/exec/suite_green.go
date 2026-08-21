@@ -133,7 +133,10 @@ func (g *SuiteGreen) blameTheRepository(
 	// and every failure the diff did not write belongs to it.
 	broken := !base.AllGreen() && len(base.Names()) == 0
 	for _, c := range inherited {
-		if broken || base.Outcomes(c.Name).Any(domain.CaseFail) {
+		// Keyed on the file and the name together: two files carrying one
+		// name would otherwise answer for each other, and a failure the
+		// repository already had would be charged to the diff.
+		if broken || base.OutcomesOf(c.ID()).Any(domain.CaseFail) {
 			return fmt.Errorf("%w: %q is red on the base ref too, the repository was broken before the diff",
 				domain.ErrHarness, c.Name)
 		}
@@ -180,7 +183,7 @@ func greenOnRetry(retried domain.Runs, c domain.Case) bool {
 		return false
 	}
 	if c.Name != "" {
-		return retried.Outcomes(c.Name).All(domain.CasePass)
+		return retried.OutcomesOf(c.ID()).All(domain.CasePass)
 	}
 	for _, run := range retried {
 		for _, got := range run.Failed() {

@@ -160,10 +160,26 @@ func judge(ctx context.Context, f verifyFlags) (
 	e := j.environment(f)
 	// Teardown always runs, and a deferred close is what makes that true on
 	// the panic and the deadline alike.
+	//
+	// A teardown that fails may not take the verdict with it. Every gate had
+	// already spoken by the time this runs, so a compose file that will not
+	// come down says nothing about the diff: turning the refusal it earned into
+	// a harness failure would hand the agent a retry without penalty and leave
+	// a human-required one waiting for nobody. What the failure costs is a line
+	// in the report, and the report still gets written.
 	defer func() {
-		if closeErr := e.close(ctx); err == nil && closeErr != nil {
-			results, rep, err = nil, domain.Report{}, closeErr
+		closeErr := e.close(ctx)
+		if closeErr == nil {
+			return
 		}
+		if err != nil || !refused(results) {
+			err = closeErr
+			return
+		}
+		rep.Warnings = append(rep.Warnings, domain.Warning{
+			Kind:   domain.WarnHarness,
+			Detail: "teardown failed, the environment may have leaked: " + closeErr.Error(),
+		})
 	}()
 
 	results, err = runner.Run(ctx, j.diff, runner.Options{
@@ -182,6 +198,16 @@ func judge(ctx context.Context, f verifyFlags) (
 		rep.ProbeRuns = j.cfg.RedGreen.ProbeRuns
 	}
 	return results, rep, nil
+}
+
+// refused reports whether the gates reached a verdict of their own.
+//
+// It is what decides who a failed teardown answers to. A run that refused has
+// already said everything it had to say about the diff, and a leak afterwards
+// may not soften that into a retry without penalty. A run that refused nothing
+// has no verdict to protect, so the leak is what the caller hears.
+func refused(results []domain.GateResult) bool {
+	return len(results) > 0 && domain.ExitCode(runner.Outcome(results)) != 0
 }
 
 func (j judgement) environment(f verifyFlags) *env {
@@ -225,9 +251,13 @@ func (j judgement) assemble(results []domain.GateResult) domain.Report {
 		Base:            j.diff.Base,
 		Head:            j.diff.Head,
 		Diff:            j.diff.Totals(),
-		Tests:           j.diff.StatsMatching(j.cfg.IsTestSurface),
-		Gates:           results,
-		Warnings:        append(j.warnings, gateWarnings(results)...),
+		// tests.patterns rather than the whole test surface: this figure is
+		// what diff-budget left out, and a reader has to be able to subtract it
+		// from the diff line and arrive at the budget line. A fixture counts
+		// against the budget, so counting it here would break that sum.
+		Tests:    j.diff.StatsMatching(j.cfg.Tests.Patterns.Match),
+		Gates:    results,
+		Warnings: append(j.warnings, gateWarnings(results)...),
 	}
 }
 

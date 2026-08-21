@@ -43,7 +43,7 @@ exit 0
 # change to it.
 set -eu
 
-# Run the tests of this project. This is the hook redfirst judges by, and four
+# Run the tests of this project. This is the hook redfirst judges by, and five
 # rules decide whether that judgement is worth anything.
 #
 # 1. $REDFIRST_FILTER carries a list of files. Run only those when it is
@@ -56,7 +56,12 @@ set -eu
 #    exit code 5, which no diff the agent writes can answer.
 # 3. Install dependencies and build only when $REDFIRST_PROBE_INDEX is 1. Every
 #    run of a phase shares one working copy, so the rest is already built.
-# 4. Never hand back the result of the previous run. Runners that cache have a
+# 4. Decide the tree builds before reporting anything. A file that does not
+#    build is reported by most runners as a case named after the file, and
+#    red-green reads that as a case the diff added: red on base, gone from head
+#    once the fix arrives. A tree that does not build has to leave
+#    $REDFIRST_RESULTS empty instead.
+# 5. Never hand back the result of the previous run. Runners that cache have a
 #    flag for it: go test needs -count=1.
 #
 # $REDFIRST_WORKDIR is the working copy, and it is already the current

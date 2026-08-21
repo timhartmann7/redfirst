@@ -259,9 +259,10 @@ Under `weak-red` and `red` the check degenerates to file level, and the report
 has to say so, because "the code does not compile without the fix" claims less
 than "the test catches the bug".
 
-**`red_green.enabled` is parsed and printed and read by nothing.** Setting it to
-`false` does not switch the gate off in v1. Use `gates.disabled = ["red-green"]`
-for that.
+**`red_green.enabled = false` switches the gate off**, exactly as
+`gates.disabled = ["red-green"]` does. The two are the same switch: `redfirst
+explain` prints the gate as disabled either way, and the report line reads
+`SKIP  red-green  disabled in config`.
 
 ### `[suite]`
 
@@ -326,7 +327,8 @@ The nine ids: `protected-paths`, `diff-budget`, `test-immutability`,
 v1 parses the scope shape and implements none of it: a non-empty `[[scope]]`
 list is exit code 3 with `scopes are not implemented yet`. The shape is frozen
 now so that adding scopes later breaks nobody. `scopes.allow_cross_scope` is
-read by nothing in v1, the same as `red_green.enabled`.
+parsed and read by nothing in v1: with no scopes to cross, it has nothing to
+decide.
 
 ## What gets refused
 

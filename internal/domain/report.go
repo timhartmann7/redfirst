@@ -27,6 +27,9 @@ const (
 	WarnSuppression WarningKind = "suppression"
 	// WarnFlaky is a failing test the diff did not touch.
 	WarnFlaky WarningKind = "flaky"
+	// WarnHarness is the environment failing at something that comes after the
+	// judging, so the verdict stands and the report says what leaked.
+	WarnHarness WarningKind = "harness"
 	// WarnConfig is a rule the run had to adjust, such as an immutability
 	// mode downgraded for want of hooks.
 	WarnConfig WarningKind = "config"

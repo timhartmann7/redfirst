@@ -46,6 +46,21 @@ if [ "$REDFIRST_PROBE_INDEX" = 1 ]; then
 	pnpm install --frozen-lockfile
 fi
 
+# The collection gets a step of its own, and that is the opposite of tidiness.
+# A test file that does not resolve its imports is reported by vitest run as a
+# case named after the file, and red-green reads a name it did not see on base
+# as a case the diff added: red on base, gone from head once the fix is there,
+# which refuses the honest fix that adds a module together with the test for it.
+# A tree that does not collect has no case to report, so this step leaves
+# $REDFIRST_RESULTS empty instead, which is what
+# red_green.compile_failure_on_base is there to rule on.
+#
+# vitest list collects without running, so nothing executes twice here.
+if ! pnpm exec vitest list $REDFIRST_FILTER >/dev/null; then
+	echo "the test files under $REDFIRST_FILTER do not collect" >&2
+	exit 1
+fi
+
 # $REDFIRST_FILTER is left unquoted on purpose: it carries a list of files, and
 # an empty one has to run the whole suite.
 #
