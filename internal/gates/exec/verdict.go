@@ -7,13 +7,14 @@ import (
 	"github.com/timhartmann7/redfirst/internal/domain"
 )
 
-// The four refusals red-green can reach, spelled out where they are worded
+// The refusals red-green can reach, spelled out where they are worded
 // rather than at their call sites. A failure line says what is wrong, not what
 // got checked: "test is green on base" helps, "red-green check failed" does not.
 const (
 	greenOnBase = "test is green on base, it does not cover the fix"
 	flakyOnBase = "flaky test, base probe is not deterministic"
 	redOnHead   = "test is red on head, the fix does not make it pass"
+	goneOnHead  = "the case the base probe named is not reported on head at all"
 	flakyOnHead = "flaky test, head probe is not deterministic"
 	sharedName  = "two test files carry one case name, the added case cannot be told from the other"
 )
@@ -77,11 +78,13 @@ func judgeBase(base domain.Runs, added []string) (domain.GateResult, bool) {
 // that only sometimes passes with the fix in place has no value either, and
 // K-of-K cuts it off here as well.
 func judgeHead(base, head domain.Runs, added []string) domain.GateResult {
-	var red, mixed []string
+	var red, gone, mixed []string
 	for _, name := range added {
 		outcomes := head.Outcomes(name)
 		switch {
 		case outcomes.All(domain.CasePass):
+		case outcomes.All(domain.CaseAbsent):
+			gone = append(gone, name)
 		case !outcomes.Any(domain.CasePass):
 			red = append(red, name)
 		default:
@@ -89,6 +92,14 @@ func judgeHead(base, head domain.Runs, added []string) domain.GateResult {
 		}
 	}
 
+	// A case no head run mentions is not a case the fix failed to turn green,
+	// and telling the agent to fix the code sends it at sources that are doing
+	// their job. It is the name itself that did not survive: either the diff
+	// took the case away, or the base probe never named a case at all and the
+	// harness reported the file it could not build under a name of its own.
+	if len(gone) > 0 {
+		return refuse(goneOnHead, domain.RemediationFixTest, headEvidence(base, head, gone)...)
+	}
 	if len(red) > 0 {
 		return refuse(redOnHead, domain.RemediationFixCode, headEvidence(base, head, red)...)
 	}
@@ -170,8 +181,14 @@ func baseEvidence(base domain.Runs, names []string) []domain.Evidence {
 func headEvidence(base, head domain.Runs, names []string) []domain.Evidence {
 	out := make([]domain.Evidence, 0, len(names))
 	for _, name := range names {
+		// A case head never reported has no file there, and the base probe is
+		// the only place left that knows where the name came from.
+		file := head.File(name)
+		if file == "" {
+			file = base.File(name)
+		}
 		out = append(out, domain.Evidence{
-			File:     head.File(name),
+			File:     file,
 			Case:     name,
 			BaseRuns: base.Outcomes(name).Strings(),
 			HeadRuns: head.Outcomes(name).Strings(),
