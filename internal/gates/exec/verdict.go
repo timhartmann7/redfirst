@@ -2,6 +2,7 @@ package exec
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/timhartmann7/redfirst/internal/domain"
 )
@@ -14,7 +15,33 @@ const (
 	flakyOnBase = "flaky test, base probe is not deterministic"
 	redOnHead   = "test is red on head, the fix does not make it pass"
 	flakyOnHead = "flaky test, head probe is not deterministic"
+	sharedName  = "two test files carry one case name, the added case cannot be told from the other"
 )
+
+// ambiguous refuses a set whose names do not stand for one case each.
+//
+// Two files carrying one name is not an edge case to round off. A real case red
+// on base beside a fake one green on base collapses into a single entry, the
+// real one answers for both, and the fake reaches a human with a green verdict.
+// Renaming the case the diff added is a move the agent has, so this is a
+// refusal rather than a human-required.
+func ambiguous(runs domain.Runs, names []string) (domain.GateResult, bool) {
+	var evidence []domain.Evidence
+	for _, name := range names {
+		files := runs.Sharing(name)
+		if len(files) < 2 {
+			continue
+		}
+		evidence = append(evidence, domain.Evidence{
+			File: files[0], Case: name,
+			Detail: "the name is carried by " + strings.Join(files, " and "),
+		})
+	}
+	if len(evidence) == 0 {
+		return domain.GateResult{}, false
+	}
+	return refuse(sharedName, domain.RemediationFixTest, evidence...), true
+}
 
 // judgeBase demands the one result that proves an added case catches a bug:
 // red in every run, not red in one of them.

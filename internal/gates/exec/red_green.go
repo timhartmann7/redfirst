@@ -79,6 +79,9 @@ func (g *RedGreen) Run(ctx context.Context, in domain.Input) (domain.GateResult,
 func (g *RedGreen) byCase(
 	ctx context.Context, probe domain.Probe, base domain.Runs, added []string,
 ) (domain.GateResult, error) {
+	if res, refused := ambiguous(base, added); refused {
+		return res, nil
+	}
 	if res, refused := judgeBase(base, added); refused {
 		return res, nil
 	}
@@ -130,6 +133,9 @@ func (g *RedGreen) byFile(
 // file set where it named none either.
 func judgeHeadByName(base, head domain.Runs, added []string) domain.GateResult {
 	if len(added) > 0 {
+		if res, refused := ambiguous(head, added); refused {
+			return res
+		}
 		return judgeHead(base, head, added)
 	}
 	return judgeHeadByFile(head)

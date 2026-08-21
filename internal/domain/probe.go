@@ -43,6 +43,19 @@ type Case struct {
 	Outcome CaseOutcome
 }
 
+// ID is the pair section 7 of the spec calls a per-case result: the file the
+// harness attributed the case to and its name.
+func (c Case) ID() CaseID { return CaseID{File: c.File, Name: c.Name} }
+
+// CaseID identifies one case inside a probe.
+//
+// The name alone does not, and where a set arithmetic over names is what a gate
+// needs, Runs.Sharing says so before the lookup reads the wrong case.
+type CaseID struct {
+	File string
+	Name string
+}
+
 // Run is one execution of the project's test hook.
 type Run struct {
 	// Index is the run's number inside its phase, starting at one.
@@ -133,20 +146,72 @@ func (r Runs) File(name string) string {
 	return ""
 }
 
+// Sharing is every file the runs reported a case named name under, in
+// first-seen order.
+//
+// Two entries mean one name stands for two cases, and no lookup keyed on the
+// name can tell them apart: Outcomes answers with the first, and the second is
+// never judged. Nothing here resolves that. The gate refuses instead, because
+// a check that cannot tell two cases apart is an ambiguity, and an ambiguity
+// resolves to a refusal.
+func (r Runs) Sharing(name string) []string {
+	var files []string
+	for _, run := range r {
+		for _, c := range run.Cases {
+			if c.Name != name || slices.Contains(files, c.File) {
+				continue
+			}
+			files = append(files, c.File)
+		}
+	}
+	return files
+}
+
 // Outcomes is what every run said about one case, in run order.
+//
+// The name is the key, so the answer is only as good as Sharing says it is.
+// Where the caller holds the whole case, OutcomesOf keys on the pair.
 func (r Runs) Outcomes(name string) Outcomes {
+	return r.OutcomesOf(CaseID{Name: name})
+}
+
+// OutcomesOf is Outcomes keyed on the file and the name together. A caller that
+// already holds a Case has no reason to throw the file away.
+func (r Runs) OutcomesOf(id CaseID) Outcomes {
 	out := make(Outcomes, 0, len(r))
 	for _, run := range r {
-		out = append(out, run.outcome(name))
+		out = append(out, run.outcome(id))
 	}
 	return out
 }
 
-func (r Run) outcome(name string) CaseOutcome {
-	for _, c := range r.Cases {
-		if c.Name == name {
-			return c.Outcome
+// OutcomesAll is what every run said about every case carrying one name, rather
+// than about the first of them. A check that has to hold for a name two files
+// share has to hold for both, or a green namesake clears the other.
+func (r Runs) OutcomesAll(name string) Outcomes {
+	var out Outcomes
+	for _, run := range r {
+		seen := false
+		for _, c := range run.Cases {
+			if c.Name != name {
+				continue
+			}
+			out = append(out, c.Outcome)
+			seen = true
 		}
+		if !seen {
+			out = append(out, CaseAbsent)
+		}
+	}
+	return out
+}
+
+func (r Run) outcome(id CaseID) CaseOutcome {
+	for _, c := range r.Cases {
+		if c.Name != id.Name || (id.File != "" && c.File != id.File) {
+			continue
+		}
+		return c.Outcome
 	}
 	return CaseAbsent
 }

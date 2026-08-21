@@ -222,3 +222,29 @@ func assertCaseEvidence(t *testing.T, res domain.GateResult, want string) {
 		t.Errorf("evidence names case %q, want %q", res.Evidence[0].Case, want)
 	}
 }
+
+// TestTestImmutability_ARedNamesakeDoesNotClearACaseThatRegressed covers the
+// identity a name alone does not carry.
+//
+// Survival is judged by name, so that renaming a test file keeps passing. The
+// greenness that follows it may not be judged that way: a case red on head
+// beside a green one of the same name in another file has to refuse, and
+// reading the first of the two clears it.
+func TestTestImmutability_ARedNamesakeDoesNotClearACaseThatRegressed(t *testing.T) {
+	t.Parallel()
+
+	// One run, one name, two files: the green one first, the red one after it.
+	head := domain.Runs{{Index: 1, Green: false, Cases: []domain.Case{
+		{File: "src/a-legacy.test.js", Name: "adds prices", Outcome: domain.CasePass},
+		{File: "src/z-legacy.test.js", Name: "adds prices", Outcome: domain.CaseFail},
+	}}}
+
+	cfg := casesConfig(t, []string{"**/*.snap"}, domain.ImmutabilityCases, domain.ImmutabilityWarn)
+	res := runCasesGate(t, cfg, casesProbe{inventory: passing("adds prices"), head: head})
+
+	assertStatus(t, res, domain.StatusFail)
+	if res.Message != "cases · 1 regressed" {
+		t.Errorf("message = %q, want the regression the namesake hid", res.Message)
+	}
+	assertCaseEvidence(t, res, "adds prices")
+}

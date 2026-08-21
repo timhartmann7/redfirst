@@ -43,10 +43,13 @@ func casesOffences(ctx context.Context, in domain.Input) ([]offence, error) {
 				kindRemoved, "the case is gone on head"))
 			continue
 		}
-		if !head.Outcomes(name).All(domain.CasePass) {
+		// Every file that carries the name, not the first of them. Survival is
+		// judged by name so that renaming a test file keeps passing, and that
+		// same name may reach head from two files: reading one of them would
+		// let a green namesake clear a case that went red.
+		if outcomes := head.OutcomesAll(name); !outcomes.All(domain.CasePass) {
 			offences = append(offences, caseOffence(head.File(name), name,
-				kindRegressed, "the case is not green on head: "+
-					joinOutcomes(head.Outcomes(name))))
+				kindRegressed, "the case is not green on head: "+joinOutcomes(outcomes)))
 		}
 	}
 	return offences, nil
