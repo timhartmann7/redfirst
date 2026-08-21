@@ -76,7 +76,7 @@ A non-zero `test.sh` is a verdict rather than an error, so its output stays in
 the run directory and the report names the failing cases out of
 `$REDFIRST_RESULTS` instead.
 
-## The four rules for `test.sh`
+## The five rules for `test.sh`
 
 Each of them is one silent way to make `red-green` worthless. A hook can break
 any of them and still look perfectly healthy by hand.
@@ -102,6 +102,13 @@ modifies an existing test file gets exit code 5, which no diff the agent writes
 can answer. Parsing your sources instead would mean a parser per language, and
 that is the knowledge redfirst refuses to hold.
 
+The names have to be unique across the files one probe runs. A name two files
+carry is one case as far as any lookup is concerned, and a fake case green on
+base would ride in behind an honest one that is red there. red-green refuses
+that outright rather than guess which case the name meant, and the report names
+both files. It only ever comes up between files the same diff touched, so
+renaming the case the diff added answers it.
+
 **3. Install dependencies only when `$REDFIRST_PROBE_INDEX` is 1.** Every run
 inside a phase shares one working copy, so an install repeated per run buys
 nothing:
@@ -125,7 +132,33 @@ the overlay, and the probes would then judge code nobody asked about. Building
 the application, which is what the snippet above does, is safe inside the guard.
 Precompiling the tests is not.
 
-**4. Never hand back the result of the previous run.** Runners that cache have a
+**4. Decide the tree builds before you report anything.** A test file that does
+not compile, or whose imports do not resolve, is reported by most runners as a
+case named after the file: `vitest run` writes a `<testcase>` under the file's
+own path, and `gotestsum` calls it `TestMain`. red-green reads a name the base
+probe did not have as a case the diff added, so it demands that name be green on
+head, where the fix has made it disappear. An honest fix that adds a module
+together with the test for it gets refused, and the refusal points at code that
+is doing its job.
+
+Give the build a step of its own and let a tree that does not build leave
+`$REDFIRST_RESULTS` empty:
+
+```sh
+if ! pnpm exec vitest list $REDFIRST_FILTER >/dev/null; then
+	echo "the test files under $REDFIRST_FILTER do not collect" >&2
+	exit 1
+fi
+```
+
+`vitest list` collects without running, `pytest --collect-only -q` does the
+same, and `go test -run '^$'` compiles without executing, so nothing runs twice.
+An empty results file is what `red_green.compile_failure_on_base` exists to rule
+on: the whole file set counts as red, the head run's names stand in for the
+added cases, and the report says the red came from the build rather than from an
+assertion. Every preset except `blank` ships this step.
+
+**5. Never hand back the result of the previous run.** Runners that cache have a
 flag for it. `go test` needs `-count=1`, `vitest` wants `--no-cache`. Three
 probes that collapse into one leave `probe_runs` meaning nothing, and the
 identical result the gate demands is what stands between a fake test and a green
