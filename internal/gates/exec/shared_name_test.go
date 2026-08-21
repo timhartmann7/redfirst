@@ -45,3 +45,29 @@ func TestRedGreen_ACaseNameTwoFilesShareIsARefusal(t *testing.T) {
 		t.Errorf("detail = %q, want %q", e.Detail, want)
 	}
 }
+
+// TestRedGreen_CompileFailureOnBaseWithoutANewCaseIsARefusal covers the row of
+// the step 7 table an empty C_new falls under.
+//
+// The diff edits an existing test file so that it no longer builds on base and
+// adds no case at all. The base probe then names nothing, the head run's names
+// stand in for C_new, and every one of them was already there. That is "test
+// files changed but no new test case appeared", not a pass: falling back to the
+// file set here would clear any diff whose test edit merely fails to build
+// without the fix.
+func TestRedGreen_CompileFailureOnBaseWithoutANewCaseIsARefusal(t *testing.T) {
+	t.Parallel()
+
+	v := fixture{head: func(r *testkit.Repo) {
+		r.Write("src/total.js", totalFixed)
+		r.Write("src/discount.js", discountSource)
+		// A file-level requirement base cannot meet, and not one new case.
+		r.Write("src/total.test.js", "// requires: applyDiscount\n"+totalTest)
+	}}.judge(t)
+
+	v.assertRefusal(t, domain.GateRedGreen, wantRefusal{
+		message:     "test files changed but no new test case appeared",
+		remediation: domain.RemediationAddTest,
+		exit:        1,
+	})
+}

@@ -131,12 +131,21 @@ func (g *RedGreen) byFile(
 
 // judgeHeadByName judges head per case where the head run named any, and by the
 // file set where it named none either.
+//
+// The middle case is the one worth spelling out: the head run named its cases
+// and base already held every one of them. The substituted set is then empty,
+// which is the spec's "C_new is empty" row and a refusal. Falling through to
+// the file set instead would pass any diff whose test edit merely fails to
+// build on base, with no new case anywhere in it.
 func judgeHeadByName(base, head domain.Runs, added []string) domain.GateResult {
 	if len(added) > 0 {
 		if res, refused := ambiguous(head, added); refused {
 			return res
 		}
 		return judgeHead(base, head, added)
+	}
+	if head.Named() {
+		return noNewCase()
 	}
 	return judgeHeadByFile(head)
 }
