@@ -186,7 +186,7 @@
       "properties": {
         "kind": {
           "type": "string",
-          "enum": ["guarded-paths", "suppression", "flaky", "config"]
+          "enum": ["guarded-paths", "suppression", "flaky", "config", "harness"]
         },
         "file": { "type": "string" },
         "line": { "type": "integer", "minimum": 1 },
