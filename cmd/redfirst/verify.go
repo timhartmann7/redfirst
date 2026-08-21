@@ -251,9 +251,13 @@ func (j judgement) assemble(results []domain.GateResult) domain.Report {
 		Base:            j.diff.Base,
 		Head:            j.diff.Head,
 		Diff:            j.diff.Totals(),
-		Tests:           j.diff.StatsMatching(j.cfg.IsTestSurface),
-		Gates:           results,
-		Warnings:        append(j.warnings, gateWarnings(results)...),
+		// tests.patterns rather than the whole test surface: this figure is
+		// what diff-budget left out, and a reader has to be able to subtract it
+		// from the diff line and arrive at the budget line. A fixture counts
+		// against the budget, so counting it here would break that sum.
+		Tests:    j.diff.StatsMatching(j.cfg.Tests.Patterns.Match),
+		Gates:    results,
+		Warnings: append(j.warnings, gateWarnings(results)...),
 	}
 }
 

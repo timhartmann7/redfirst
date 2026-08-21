@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -290,4 +291,47 @@ func TestRun_UnknownCommandAlertsAHuman(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestVerify_TheTestFigureIsWhatTheBudgetLeftOut keeps the two numbers in the
+// header reconcilable.
+//
+// diff-budget excludes files matching tests.patterns and counts everything
+// else, the test surface included. Reporting the surface as "tests" made the
+// diff line, the test line and the budget line refuse to add up, and a report
+// whose whole job is to explain cannot afford numbers a reader cannot check.
+func TestVerify_TheTestFigureIsWhatTheBudgetLeftOut(t *testing.T) {
+	t.Parallel()
+
+	r := testkit.CleanFix(t)
+	// A fixture, not a test file: it decides outcomes and holds no case, so the
+	// budget counts it and the test figure may not.
+	r.Write("vitest.config.ts", "export default { test: {} }\n")
+	r.Commit("chore: pin the runner config")
+
+	out := filepath.Join(t.TempDir(), "report.json")
+	args := append(verifyArgsWithHooks(r.Dir), "--no-hooks", "--report", "json", "--out", out)
+	_ = run(context.Background(), args, io.Discard, io.Discard)
+
+	rep := readReport(t, out)
+	if rep.Tests.Files != 1 {
+		t.Errorf("tests.files = %d, want the one file under tests.patterns", rep.Tests.Files)
+	}
+	budget := gateOf(t, rep, domain.GateDiffBudget)
+	if !strings.HasPrefix(budget.Message, fmt.Sprintf("%d/", rep.Diff.Files-rep.Tests.Files)) {
+		t.Errorf("budget message %q does not start at diff %d minus tests %d",
+			budget.Message, rep.Diff.Files, rep.Tests.Files)
+	}
+}
+
+func gateOf(t *testing.T, rep domain.Report, id domain.GateID) domain.GateResult {
+	t.Helper()
+
+	for _, g := range rep.Gates {
+		if g.ID == id {
+			return g
+		}
+	}
+	t.Fatalf("the report carries no %s line", id)
+	return domain.GateResult{}
 }
